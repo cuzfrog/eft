@@ -1,7 +1,8 @@
 package com.github.cuzfrog.eft
 
-/**
-  * Created by cuz on 7/3/17.
-  */
-private case class RemoteInfo(ips: Seq[String], port: Int, filename: Option[String] = None)
-private case object Ack
+sealed trait Msg
+private case class RemoteInfo(ips: Seq[String], cmdPort: Int,
+                              receivePort: Option[Int] = None,
+                              filename: Option[String] = None) extends Msg
+//private case object Ack extends Msg
+private case object Done extends Msg

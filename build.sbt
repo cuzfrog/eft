@@ -14,6 +14,7 @@ lazy val root = (project in file("."))
       "com.typesafe" % "config" % "1.3.1",
       "me.alexpanov" % "free-port-finder" % "1.0",
       "io.suzaku" %% "boopickle" % "1.2.6",
+      //"com.twitter" %% "finagle-http" % "6.45.0",
       "com.typesafe.akka" %% "akka-stream" % "2.5.3",
       "com.typesafe.akka" %% "akka-stream-testkit" % "2.5.3" % Test
     ),

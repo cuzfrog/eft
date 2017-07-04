@@ -28,18 +28,8 @@ object Tmp extends App {
   server runForeach { connection =>
     println(s"Local address:${connection.localAddress}")
     println(s"New connection from: ${connection.remoteAddress}")
-    val echo = Flow[ByteString]
-      .via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 256, allowTruncation = true))
-      .map(_.utf8String)
-      .map {
-        case "exit" =>
-          system.terminate()
-          ""
-        case "cmd" => "cmd"
-      }
-      .map(ByteString(_))
-
-    connection.handleWith(echo)
+    connection.flow.map(_.utf8String)
+      .runWith(Source.maybe, Sink.foreach(println))
   }
 
   InetAddress.getByName(host).isReachable(300)
