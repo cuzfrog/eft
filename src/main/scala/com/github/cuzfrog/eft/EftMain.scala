@@ -1,6 +1,7 @@
 package com.github.cuzfrog.eft
 
 import java.nio.file.{Files, Paths}
+import java.util.concurrent.atomic.AtomicReference
 
 /**
   * Created by cuz on 7/3/17.
@@ -23,11 +24,12 @@ private class EftMain(args: Array[String]) extends SimpleLogger {
     println(text)
   }
 
-  private val tcpMan = new TcpMan()
+  private lazy val tcpMan = new TcpMan(config = configuration)
+  private val tcpManRef = new AtomicReference[Option[TcpMan]](None)
   private val cmdArgs = args.filter(!_.startsWith("-"))
   private val params = args.filter(_.startsWith("-"))
 
-  def run(): Unit = {
+  def run(): Unit = try {
     if (cmdArgs.isEmpty) printHelp()
     else {
       cmdArgs.head.toLowerCase match {
@@ -37,8 +39,9 @@ private class EftMain(args: Array[String]) extends SimpleLogger {
             case Some(path) =>
               val file = Paths.get(path)
               if (Files.exists(file)) {
-                val code = tcpMan.push(Paths.get(path))
-                info(s"Pull code: $code")
+                tcpManRef.set(Option(tcpMan))
+                val code = Msg.publishCode(tcpMan.push(Paths.get(path)))
+                info(s"Pull code: $code waiting to pull...", withTitle = false)
               }
               else err(s"File $path does not exist.")
           }
@@ -46,11 +49,18 @@ private class EftMain(args: Array[String]) extends SimpleLogger {
           cmdArgs.tail.headOption match {
             case None => err("Must provide pull code.")
             case Some(code) =>
-              val destDir = Paths.get(cmdArgs.tail.headOption.getOrElse("."))
+              val destDir = Paths.get(cmdArgs.drop(2).headOption.getOrElse("."))
+              tcpManRef.set(Option(tcpMan))
               tcpMan.pull(Msg.fromCode(code), destDir)
           }
         case _ => printHelp()
       }
     }
+  } catch {
+    case e: Throwable =>
+      err(s"Failed with msg:${e.getMessage}")
+      if (configuration.isDebug) e.printStackTrace()
+      tcpManRef.get().map(_.system.terminate())
+      System.exit(1)
   }
 }

@@ -6,7 +6,7 @@ onLoad in Global := (onLoad in Global).value andThen (Command.process(s"", _))
 
 
 lazy val root = (project in file("."))
-  .settings(commonSettings, publicationSettings, readmeVersionSettings)
+  .settings(commonSettings, EftSettings.settings)
   .settings(
     name := "eft",
     version := "0.1.0",

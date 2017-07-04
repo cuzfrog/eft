@@ -1,4 +1,14 @@
+File transfer tool.
+Author: cuz
 ----------------------
 [commands]            [explanations]
-push
-pull
+push                  publish a file and wait for pulling from client.
+pull                  pull a published file.
+----------------------
+[example]
+On node where you want to send a file:
+    >eft push file1.txt
+    Pull code: XXXXXX
+Then, on node where you want to receive this file:
+    >eft pull XXXXXX
+file1.txt will be saved to current dir on pull node.
