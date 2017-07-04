@@ -8,13 +8,23 @@ object EftSettings {
     assembly := (assembly dependsOn generateSh).value,
     generateSh := {
       val file = crossTarget.value / "eft.bat"
-      val contents = s"@echo off\r\njava -jar eft-assembly-${version.value}.jar %*"
+      val batWdir = """%~dp0\"""
+      val contents = s"@echo off\r\njava -jar ${batWdir}eft-assembly-${version.value}.jar %*"
       IO.write(file, contents)
       val fileSh = crossTarget.value / "eft"
-      val pwd = """$(dirname "$0")/"""
-      val contentsSh = s"#!/bin/bash\njava -jar ${pwd}eft-assembly-${version.value}.jar " + "\"$@\""
+      val shWdir = """$(dirname "$0")/"""
+      val contentsSh = s"#!/bin/bash\njava -jar ${shWdir}eft-assembly-${version.value}.jar " + "\"$@\""
       IO.write(fileSh, contentsSh)
       fileSh.setExecutable(true)
+
+      val log = streams.value.log
+      val files = crossTarget.value.listFiles()
+        .filter(f => f.isFile && (!f.name.endsWith(".zip")))
+        .map(_.getName)
+      log.info("compress release files.")
+      val cmd =s"""zip ${name.value}.zip ${files.mkString(" ")}""".mkString
+      Process(cmd, crossTarget.value) ! log
+      Process(s"mv ${name.value}.zip /tmp/", crossTarget.value) ! log
     }
   )
 }
