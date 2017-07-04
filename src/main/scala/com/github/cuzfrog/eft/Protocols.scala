@@ -4,7 +4,8 @@ private sealed trait Msg
 private case class RemoteInfo(ips: Seq[String], cmdPort: Int,
                               receivePort: Option[Int] = None,
                               filename: Option[String] = None) extends Msg
-//private case object Ack extends Msg
+private case object Ask extends Msg
+private case object Hello extends Msg
 private case object Done extends Msg
 
 private object Msg {
@@ -17,11 +18,12 @@ private object Msg {
   }
 
   def fromCode(code: String): RemoteInfo = try {
-    val port = Integer.parseInt(code.take(4), 16)
-    val ips = code.drop(4).grouped(8).map { section =>
+    val trimmed = code.trim
+    val port = Integer.parseInt(trimmed.take(4), 16)
+    val ips = trimmed.drop(4).grouped(8).map { section =>
       require(section.length == 8, "Malformed remote code.")
       section.grouped(2).map(Integer.parseInt(_, 16).toString).reduce(_ + "." + _)
-    }.toSeq
+    }.toVector
     RemoteInfo(ips, port)
   } catch {
     case e@(_: NumberFormatException | _: IllegalArgumentException) =>

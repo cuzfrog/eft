@@ -17,11 +17,10 @@ object Settings {
       "-deprecation",
       "-feature"),
     libraryDependencies ++= Seq(
-      "junit" % "junit" % "4.12" % "test",
-      "com.novocode" % "junit-interface" % "0.11" % "test->default"
+      "com.lihaoyi" %% "utest" % "0.4.7" % "test"
     ),
     logBuffered in Test := false,
-    testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a"),
+    testFrameworks += new TestFramework("utest.runner.Framework"),
     parallelExecution in Test := false,
     licenses += ("Apache-2.0", url("https://opensource.org/licenses/Apache-2.0"))
   )
