@@ -24,7 +24,7 @@ object EftSettings {
       log.info("compress release files.")
       val cmd =s"""zip ${name.value}.zip ${files.mkString(" ")}""".mkString
       Process(cmd, crossTarget.value) ! log
-      Process(s"mv ${name.value}.zip /tmp/", crossTarget.value) ! log
+      Process(s"cp ${name.value}.zip /tmp/", crossTarget.value) ! log
     }
   )
 }
