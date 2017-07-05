@@ -20,7 +20,7 @@ import scala.util.Try
   * Stream tcp utility.
   */
 private class TcpMan(systemName: String = "eft",
-                     config: Configuration = new Configuration()) extends SimpleLogger {
+                     config: Configuration = Configuration()) extends SimpleLogger {
   override val loggerLevel = if (config.isDebug) SimpleLogger.Debug else SimpleLogger.Info
   implicit val system = ActorSystem(systemName)
   if (!config.isDebug) system.eventStream.setLogLevel(Logging.ErrorLevel)

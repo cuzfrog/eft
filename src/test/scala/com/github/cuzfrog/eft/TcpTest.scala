@@ -19,7 +19,7 @@ object TcpTest extends TestSuite {
   Files.createDirectories(destDir)
   private val dest = destDir.resolve(src.getFileName)
 
-  private val config = new Configuration(ConfigFactory.parseResources("/reference-test.conf"))
+  private val config = Configuration()
 
   val tests = this {
     'positive {
