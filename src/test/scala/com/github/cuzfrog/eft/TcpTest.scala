@@ -8,6 +8,7 @@ import utest._
 import utest.asserts.{RetryInterval, RetryMax}
 
 import scala.concurrent.duration._
+import scala.language.postfixOps
 import scala.util.Random
 
 object TcpTest extends TestSuite {
@@ -19,7 +20,7 @@ object TcpTest extends TestSuite {
   Files.createDirectories(destDir)
   private val dest = destDir.resolve(src.getFileName)
 
-  private val config = Configuration()
+  private val config = Configuration(isDebug = true, networkTimeout = 500 millis)
 
   val tests = this {
     'positive {

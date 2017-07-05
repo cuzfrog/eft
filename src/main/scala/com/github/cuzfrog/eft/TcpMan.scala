@@ -1,6 +1,6 @@
 package com.github.cuzfrog.eft
 
-import java.net.SocketException
+import java.net.{InetAddress, SocketException}
 import java.nio.ByteBuffer
 import java.nio.file.Path
 
@@ -31,7 +31,7 @@ private class TcpMan(systemName: String = "eft",
 
   private final val EmptyByteString = ByteString(ByteBuffer.allocate(0))
 
-  private lazy val cmdPort = randomPort
+  private lazy val cmdPort = config.cmdPort.getOrElse(randomPort)
   private lazy val cmdServer = Tcp().bind("0.0.0.0", cmdPort)
 
   private lazy val receivePort = randomPort
@@ -134,10 +134,13 @@ private class TcpMan(systemName: String = "eft",
 
   private implicit class RemoteInfoEx(in: RemoteInfo) {
     def availableIP: String = {
+
+
       val ipOpt = in.ips.find { ip =>
-        sendCmd(ip, in.cmdPort, Hello).contains(Hello)
+        sendCmd(ip, in.cmdPort, Hello).contains(Hello) ||
+          InetAddress.getByName(ip).isReachable(config.networkTimeout.toMillis.toInt)
       }
-      ipOpt.getOrElse{
+      ipOpt.getOrElse {
         system.terminate()
         err("Cannot reach remote ip.")
         throw new SocketException("Cannot reach remote ip.")

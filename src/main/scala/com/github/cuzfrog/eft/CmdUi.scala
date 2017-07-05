@@ -1,7 +1,7 @@
 package com.github.cuzfrog.eft
 
 import java.io.File
-import java.nio.file.{Path, Paths}
+import java.nio.file.Paths
 
 import org.backuity.clist._
 
@@ -16,7 +16,8 @@ object CmdUi extends App {
 
     val config = Configuration(
       isDebug = cmd.debug,
-      networkTimeout = cmd.networkTimeout millis
+      networkTimeout = cmd.timeout millis,
+      cmdPort = cmd.port
     )
 
     new EftMain(cmd, config).run()
@@ -26,7 +27,8 @@ object CmdUi extends App {
 private sealed trait CommonOpt {
   self: Command =>
   var debug = opt[Boolean](description = "is debug mode")
-  var networkTimeout = opt[Long](abbrev = "nt", description = "max network timeout in millisecond")
+  var timeout = opt[Long](default = 500, description = "max network timeout in millisecond")
+  var port = opt[Option[Int]](description = "specify listening port for contact")
 }
 
 private class Push extends Command(
@@ -40,5 +42,6 @@ private class Pull extends Command(
   with CommonOpt {
   var code = arg[String](required = true, description = "pull code")
   var destDir =
-    arg[File](default = Paths.get(".").toFile, description = "dest dir to save pulled file")
+    arg[File](required = false, default = Paths.get(".").toFile,
+      description = "dest dir to save pulled file")
 }
