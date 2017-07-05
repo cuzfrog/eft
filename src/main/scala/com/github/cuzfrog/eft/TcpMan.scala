@@ -10,7 +10,6 @@ import akka.stream._
 import akka.stream.scaladsl._
 import akka.util.ByteString
 import boopickle.Default._
-import me.alexpanov.net.FreePortFinder
 
 import scala.concurrent.Await
 import scala.language.postfixOps
@@ -20,14 +19,14 @@ import scala.util.Try
   * Stream tcp utility.
   */
 private class TcpMan(systemName: String = "eft",
-                     config: Configuration = Configuration()) extends SimpleLogger {
+                     config: Configuration) extends SimpleLogger {
   override val loggerLevel = if (config.isDebug) SimpleLogger.Debug else SimpleLogger.Info
   implicit val system = ActorSystem(systemName)
   if (!config.isDebug) system.eventStream.setLogLevel(Logging.ErrorLevel)
 
   private implicit val materializer = ActorMaterializer()
   private implicit val ec = system.dispatcher
-  private def randomPort = FreePortFinder.findFreeLocalPort()
+  private def randomPort = NetworkUtil.freeLocalPort
 
   private final val EmptyByteString = ByteString(ByteBuffer.allocate(0))
 

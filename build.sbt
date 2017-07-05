@@ -11,7 +11,6 @@ val root = (project in file("."))
     name := "eft",
     version := "0.1.1",
     libraryDependencies ++= Seq(
-      "me.alexpanov" % "free-port-finder" % "1.0",
       "io.suzaku" %% "boopickle" % "1.2.6",
       "commons-io" % "commons-io" % "2.5" % Test,
       "com.typesafe.akka" %% "akka-stream" % "2.5.3",

@@ -2,6 +2,9 @@ package com.github.cuzfrog.eft
 
 import java.net.NetworkInterface
 
+import java.io.IOException
+import java.net.ServerSocket
+
 /**
   * Created by cuz on 7/3/17.
   */
@@ -19,5 +22,15 @@ object NetworkUtil {
       host.contains(".") && !address.isLoopbackAddress
     }.toList
     address.map(_.getHostAddress)
+  }
+
+  def freeLocalPort: Int = try {
+    val serverSocket = new ServerSocket(0)
+    val port = serverSocket.getLocalPort
+    serverSocket.close()
+    port
+  } catch {
+    case e: IOException =>
+      throw new IllegalStateException(e)
   }
 }
