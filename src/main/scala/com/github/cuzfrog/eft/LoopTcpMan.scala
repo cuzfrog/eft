@@ -1,4 +1,6 @@
 package com.github.cuzfrog.eft
+
+import java.net.{InetAddress, SocketException}
 import java.nio.file.Path
 
 import akka.actor.ActorSystem
@@ -23,10 +25,33 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
   private lazy val port = config.port.getOrElse(NetworkUtil.freeLocalPort)
   private lazy val server = Tcp().bind("0.0.0.0", port)
 
-  //------------ Implementation ------------
+  //------------ Implementations ------------
   override def setPush(file: Path): RemoteInfo = ???
   override def push(codeInfo: RemoteInfo, file: Path): Unit = ???
   override def setPull(folder: Path): RemoteInfo = ???
   override def pull(codeInfo: RemoteInfo, folder: Path): Unit = ???
   override def close(): Unit = ???
+
+  //------------ Helpers ------------
+  private implicit class RemoteInfoEx(in: RemoteInfo) {
+    def availableIP: String = {
+      val ipOpt = in.ips.find { ip =>
+        val icmp = InetAddress.getByName(ip).isReachable(config.networkTimeout.toMillis.toInt)
+        lazy val tcp = NetworkUtil.checkPortReachable(ip, in.port)
+        icmp || tcp
+      }
+      ipOpt.getOrElse {
+        system.terminate()
+        err("Cannot reach remote ip.")
+        throw new SocketException("Cannot reach remote ip.")
+      }
+    }
+  }
+
+  private def constrCmdFlow[R](block: ByteString => R) = Flow[ByteString]
+    .map {block}
+    .map {
+      case bs: ByteString => bs
+      case _ => ByteString.empty
+    }
 }

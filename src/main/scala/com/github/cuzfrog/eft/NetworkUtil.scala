@@ -1,9 +1,7 @@
 package com.github.cuzfrog.eft
 
-import java.net.NetworkInterface
-
+import java.net.{InetSocketAddress, NetworkInterface, ServerSocket, Socket}
 import java.io.IOException
-import java.net.ServerSocket
 
 /**
   * Created by cuz on 7/3/17.
@@ -32,5 +30,19 @@ object NetworkUtil {
   } catch {
     case e: IOException =>
       throw new IllegalStateException(e)
+  }
+
+  def checkPortReachable(ip: String, port: Int, timeoutInMilliSec: Int = 500): Boolean = {
+    val s = new Socket()
+    try {
+      s.setReuseAddress(true)
+      val sa = new InetSocketAddress(ip, port)
+      s.connect(sa, timeoutInMilliSec)
+      s.isConnected
+    } catch {
+      case e: IOException => false
+    } finally {
+      if (s.isConnected) s.close()
+    }
   }
 }
