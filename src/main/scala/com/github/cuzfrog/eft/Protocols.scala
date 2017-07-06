@@ -1,14 +1,27 @@
 package com.github.cuzfrog.eft
 
-private sealed trait Msg
-private case class RemoteInfo(ips: Seq[String], port: Int,
-                              receivePort: Option[Int] = None,
-                              filename: Option[String] = None) extends Msg
+import java.nio.ByteBuffer
+
+import boopickle.Default._
+
+import scala.util.Try
+
+private sealed trait Msg {
+  def toByteBuffer: ByteBuffer = Pickle.intoBytes(this)
+}
+private case class RemoteInfo(ips: Seq[String], port: Int) extends Msg
+private case class Filename(v: String) extends Msg
 private case object Ask extends Msg
-private case object Hello extends Msg
+private case object Acknowledge extends Msg
 private case object Done extends Msg
 
 private object Msg {
+  val HEAD = "[eft-msg]".getBytes.to[collection.immutable.Seq]
+  val PAYLOAD = "[eft-payload]".getBytes.to[collection.immutable.Seq]
+
+  def fromByteBuffer(bb: ByteBuffer): Option[Msg] =
+    Try(Unpickle[Msg].fromBytes(bb)).toOption
+
   def publishCode(info: RemoteInfo): String = {
     val port = "%04X".format(info.port)
     val ips = info.ips.map { ip =>

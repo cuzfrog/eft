@@ -8,7 +8,9 @@ import akka.event.Logging
 import akka.stream._
 import akka.stream.scaladsl._
 import akka.util.ByteString
-import boopickle.Default._
+
+
+import scala.util.Try
 
 /**
   * Created by cuz on 7/6/17.
@@ -32,6 +34,9 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
   override def pull(codeInfo: RemoteInfo, folder: Path): Unit = ???
   override def close(): Unit = ???
 
+  //------------ Stream flows ------------
+
+
   //------------ Helpers ------------
   private implicit class RemoteInfoEx(in: RemoteInfo) {
     def availableIP: String = {
@@ -47,11 +52,4 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
       }
     }
   }
-
-  private def constrCmdFlow[R](block: ByteString => R) = Flow[ByteString]
-    .map {block}
-    .map {
-      case bs: ByteString => bs
-      case _ => ByteString.empty
-    }
 }
