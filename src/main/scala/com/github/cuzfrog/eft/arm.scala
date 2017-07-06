@@ -1,7 +1,5 @@
 package com.github.cuzfrog.eft
 
-import java.util.concurrent.atomic.AtomicReference
-
 import scala.language.reflectiveCalls
 
 object arm {

@@ -17,7 +17,7 @@ object CmdUi extends App {
     val config = Configuration(
       isDebug = cmd.debug,
       networkTimeout = cmd.timeout millis,
-      cmdPort = cmd.port
+      port = cmd.port
     )
 
     new EftMain(cmd, config).run()

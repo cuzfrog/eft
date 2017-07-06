@@ -5,4 +5,5 @@ import scala.language.postfixOps
 
 private case class Configuration(isDebug: Boolean,
                                  networkTimeout: Duration,
-                                 cmdPort: Option[Int] = None)
+                                 port: Option[Int] = None,
+                                 name: String = "eft")

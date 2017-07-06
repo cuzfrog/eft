@@ -20,14 +20,16 @@ object TcpTest extends TestSuite {
   Files.createDirectories(destDir)
   private val dest = destDir.resolve(src.getFileName)
 
-  private val config = Configuration(isDebug = true, networkTimeout = 500 millis)
+  private val config = Configuration(
+    isDebug = true,
+    networkTimeout = 500 millis)
 
   val tests = this {
     'positive {
-      val pushNode = new TcpMan("pushNode", config)
-      val pullNode = new TcpMan("pullNode", config)
+      val pushNode = TcpMan(config.copy(name = "push-node"))
+      val pullNode = TcpMan(config.copy(name = "pull-node"))
 
-      val codeInfo = pushNode.push(src)
+      val codeInfo = pushNode.setPush(src)
       Thread.sleep(100)
       pullNode.pull(codeInfo, destDir)
 
