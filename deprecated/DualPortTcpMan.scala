@@ -135,7 +135,6 @@ private class DualPortTcpMan(systemName: String = "eft",
   private implicit class RemoteInfoEx(in: RemoteInfo) {
     def availableIP: String = {
 
-
       val ipOpt = in.ips.find { ip =>
         sendCmd(ip, in.port, Hello).contains(Hello) ||
           InetAddress.getByName(ip).isReachable(config.networkTimeout.toMillis.toInt)

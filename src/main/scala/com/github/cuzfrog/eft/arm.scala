@@ -11,7 +11,7 @@ object arm {
 
   implicit class CloseableOps[A <: Closeable](resource: => A) {
     def autoClosed: ManagedResource[A] = new Traversable[A] {
-      override def foreach[U](f: => A => U): Unit = try {
+      override def foreach[U](f: A => U): Unit = try {
         f(resource)
       } finally {
         resource.close()

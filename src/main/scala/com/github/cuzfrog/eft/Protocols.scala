@@ -11,10 +11,10 @@ private case object Done extends Msg
 private object Msg {
   def publishCode(info: RemoteInfo): String = {
     val port = "%04X".format(info.port)
-    val ips = info.ips.flatMap { ip =>
-      ip.split("""\.""").map(section => "%02X".format(section.toInt))
-    }.reduce(_ + _)
-    port + ips
+    val ips = info.ips.map { ip =>
+      ip.split("""\.""").map(section => "%02X".format(section.toInt)).reduce(_ + _)
+    }.reduce(_ + "-" + _)
+    port + "-" + ips
   }
 
   def publishAddress(info: RemoteInfo): String = {
@@ -24,14 +24,15 @@ private object Msg {
   }
 
   def fromAddressOrCode(addrOrCode: String): RemoteInfo = {
-    if (addrOrCode.contains(":")) fromAddress(addrOrCode) else fromCode(addrOrCode)
+    val trimmed = addrOrCode.trim
+    if (addrOrCode.contains(":")) fromAddress(trimmed) else fromCode(trimmed)
   }
 
   private def fromCode(code: String): RemoteInfo = try {
-    val trimmed = code.trim
-    val port = Integer.parseInt(trimmed.take(4), 16)
-    val ips = trimmed.drop(4).grouped(8).map { section =>
-      require(section.length == 8, "Malformed remote code.")
+    require(code.matches("""[\d\w]{4}\-[\d\w]{8}(\-[\d\w]{8})?"""))
+    val codes = code.split("""\-""").toSeq
+    val port = Integer.parseInt(codes.head, 16)
+    val ips = codes.tail.map { section =>
       section.grouped(2).map(Integer.parseInt(_, 16).toString).reduce(_ + "." + _)
     }.toVector
     RemoteInfo(ips, port)
