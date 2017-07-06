@@ -29,6 +29,10 @@ private sealed trait CommonOpt {
   var debug = opt[Boolean](description = "is debug mode")
   var timeout = opt[Long](default = 500, description = "max network timeout in millisecond")
   var port = opt[Option[Int]](description = "specify listening port for contact")
+  var printCode = opt[Boolean](description = "print connection address as hex string.")
+
+  var address = arg[Option[String]](required = false,
+    description = "address or connection code, e.g. 127.0.0.1:8088")
 }
 
 private class Push extends Command(
@@ -40,7 +44,6 @@ private class Push extends Command(
 private class Pull extends Command(
   description = "pull a published file from push node")
   with CommonOpt {
-  var code = arg[String](required = true, description = "pull code")
   var destDir =
     arg[File](required = false, default = Paths.get(".").toFile,
       description = "dest dir to save pulled file")
