@@ -2,7 +2,7 @@ package com.github.cuzfrog.eft
 
 import java.net.InetAddress
 
-import akka.actor.ActorSystem
+import akka.actor.{Actor, ActorSystem, Props}
 import java.nio.file.Paths
 
 import akka.NotUsed
@@ -22,17 +22,14 @@ object Tmp extends App {
   implicit val materializer = ActorMaterializer()
   implicit val ec = system.dispatcher
 
+  val receiver = system.actorOf(Props[Receiver], "tmp-receiver")
   try {
-    val promise = Promise[Source[Int, NotUsed]]
+    val mockTcpFlow = Flow[Int].map(_ + 1)
 
-    val src = Source.single(-1).filter(_ > 0)
-    val flow = {
-      flowWithExtraSource(promise.future)
-    }
-    val sink = Sink.foreach(println)
-    val result = src.via(flow).to(sink).run()
+    val source = Source.single(0)
 
-    promise.success(Source.single(2))
+    source.via(mockTcpFlow).map(receiver ! _).to(Sink.ignore).run()
+
   } finally {
     Thread.sleep(2000)
     system.terminate()
@@ -48,4 +45,10 @@ object Tmp extends App {
       FlowShape(merge.in(0), merge.out)
     })
 
+}
+
+private class Receiver extends Actor {
+  override def receive: Receive = {
+    case msg => println(msg)
+  }
 }
