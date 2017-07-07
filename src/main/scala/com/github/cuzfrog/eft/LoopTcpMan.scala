@@ -3,13 +3,14 @@ package com.github.cuzfrog.eft
 import java.net.{InetAddress, SocketException}
 import java.nio.file.Path
 
+import akka.NotUsed
 import akka.actor.ActorSystem
 import akka.event.Logging
 import akka.stream._
 import akka.stream.scaladsl._
 import akka.util.ByteString
 
-
+import scala.concurrent.{Future, Promise}
 import scala.util.Try
 
 /**
@@ -31,8 +32,13 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
   override def setPush(file: Path): RemoteInfo = ???
   override def push(codeInfo: RemoteInfo, file: Path): Unit = ???
   override def setPull(folder: Path): RemoteInfo = ???
-  override def pull(codeInfo: RemoteInfo, folder: Path): Unit = ???
-  override def close(): Unit = ???
+  override def pull(codeInfo: RemoteInfo, folder: Path): Unit = {
+
+
+
+    ???
+  }
+  override def close(): Unit = system.terminate()
 
   //------------ Stream flows ------------
 
@@ -52,4 +58,41 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
       }
     }
   }
+}
+
+
+private object LoopTcpMan {
+
+  def constructPushFlow(file: Path,
+                       shutdownCallback: () => Unit): Flow[ByteString, ByteString, NotUsed] = {
+    Flow[ByteString].flatMapConcat { bs =>
+      if (bs.startsWith(Msg.HEAD)) { //msg
+        val respOpt = Msg.fromByteString(bs) map {
+          case Ask => Source.single(
+            Filename(file.getFileName.toString).toByteString
+          )
+
+          case Acknowledge => FileIO.fromPath(file)
+
+          case Done =>
+            shutdownCallback()
+            Source.empty[ByteString]
+        }
+        respOpt.getOrElse(Source.empty[ByteString])
+      } else Source.single(bs) //echo
+    }
+  }
+
+  def constructPullFlow(destDir:Path) = ???
+
+//  private def flowWithExtraSource[S, T](sourceFuture: Future[Source[S, T]]) =
+//    Flow.fromGraph(GraphDSL.create() { implicit builder =>
+//      import GraphDSL.Implicits._
+//      val source = Source.fromFutureSource(sourceFuture)
+//      val merge = builder.add(Merge[S](2))
+//      source ~> merge.in(1)
+//      FlowShape(merge.in(0), merge.out)
+//    })
+
+
 }

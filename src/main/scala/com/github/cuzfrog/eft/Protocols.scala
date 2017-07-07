@@ -2,12 +2,18 @@ package com.github.cuzfrog.eft
 
 import java.nio.ByteBuffer
 
+import akka.util.ByteString
 import boopickle.Default._
 
 import scala.util.Try
 
 private sealed trait Msg {
-  def toByteBuffer: ByteBuffer = Pickle.intoBytes(this)
+  /** Serialize into ByteString with head. */
+  def toByteString: ByteString = {
+    ByteString.createBuilder
+      .putBytes(Msg.HEAD.toArray)
+      .putBytes(Pickle.intoBytes(this).array()).result()
+  }
 }
 private case class RemoteInfo(ips: Seq[String], port: Int) extends Msg
 private case class Filename(v: String) extends Msg
@@ -19,8 +25,12 @@ private object Msg {
   val HEAD = "[eft-msg]".getBytes.to[collection.immutable.Seq]
   val PAYLOAD = "[eft-payload]".getBytes.to[collection.immutable.Seq]
 
-  def fromByteBuffer(bb: ByteBuffer): Option[Msg] =
+  private def fromByteBuffer(bb: ByteBuffer): Option[Msg] =
     Try(Unpickle[Msg].fromBytes(bb)).toOption
+
+  /** Deserialize ByteString which contains head. */
+  def fromByteString(bs: ByteString): Option[Msg] =
+    this.fromByteBuffer(bs.drop(Msg.HEAD.length).toByteBuffer)
 
   def publishCode(info: RemoteInfo): String = {
     val port = "%04X".format(info.port)

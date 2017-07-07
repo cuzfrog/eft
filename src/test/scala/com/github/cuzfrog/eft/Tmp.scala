@@ -5,12 +5,14 @@ import java.net.InetAddress
 import akka.actor.ActorSystem
 import java.nio.file.Paths
 
+import akka.NotUsed
 import akka.stream._
 import akka.stream.scaladsl.Tcp.{IncomingConnection, ServerBinding}
 import akka.stream.scaladsl._
 import akka.util.ByteString
 
-import scala.concurrent.Future
+import scala.concurrent.{Future, Promise}
+import arm._
 
 /**
   * Created by cuz on 7/3/17.
@@ -20,17 +22,30 @@ object Tmp extends App {
   implicit val materializer = ActorMaterializer()
   implicit val ec = system.dispatcher
 
-  private val host = "0.0.0.0"
-  private val port = 8888
+  try {
+    val promise = Promise[Source[Int, NotUsed]]
 
-  val server: Source[IncomingConnection, Future[ServerBinding]] = Tcp().bind(host, port)
+    val src = Source.single(-1).filter(_ > 0)
+    val flow = {
+      flowWithExtraSource(promise.future)
+    }
+    val sink = Sink.foreach(println)
+    val result = src.via(flow).to(sink).run()
 
-  server runForeach { connection =>
-    println(s"Local address:${connection.localAddress}")
-    println(s"New connection from: ${connection.remoteAddress}")
-    connection.flow.map(_.utf8String)
-      .runWith(Source.maybe, Sink.foreach(println))
+    promise.success(Source.single(2))
+  } finally {
+    Thread.sleep(2000)
+    system.terminate()
   }
 
-  InetAddress.getByName(host).isReachable(300)
+
+  private def flowWithExtraSource[S, T](sourceFuture: Future[Source[S, T]]) =
+    Flow.fromGraph(GraphDSL.create() { implicit builder =>
+      import GraphDSL.Implicits._
+      val source = Source.fromFutureSource(sourceFuture)
+      val merge = builder.add(Merge[S](2))
+      source ~> merge.in(1)
+      FlowShape(merge.in(0), merge.out)
+    })
+
 }

@@ -21,9 +21,7 @@ object arm {
     def withAutoClose[R](f: A => R): R = try {
       f(resource)
     } finally {
-      try {
-        resource.close()
-      }
+      resource.close()
     }
   }
 }

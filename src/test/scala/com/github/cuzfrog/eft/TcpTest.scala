@@ -1,28 +1,16 @@
 package com.github.cuzfrog.eft
 
-import java.nio.file.{Files, Paths}
+import java.nio.file.Files
 
-import com.typesafe.config.ConfigFactory
-import org.apache.commons.io.FileUtils
 import utest._
 import utest.asserts.{RetryInterval, RetryMax}
 
 import scala.concurrent.duration._
 import scala.language.postfixOps
-import scala.util.Random
 
 object TcpTest extends TestSuite {
-  private val content = Random.alphanumeric.take(512).mkString
-  private val src = Paths.get("/tmp/f1")
-  Files.write(src, content.getBytes)
-  private val destDir = Paths.get("/tmp/d1")
-  FileUtils.deleteDirectory(destDir.toFile)
-  Files.createDirectories(destDir)
+  private val (config, content, src, destDir) = TestFileInitial.init
   private val dest = destDir.resolve(src.getFileName)
-
-  private val config = Configuration(
-    isDebug = true,
-    networkTimeout = 500 millis)
 
   val tests = this {
     'positive {
