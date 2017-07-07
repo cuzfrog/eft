@@ -1,7 +1,7 @@
 package com.github.cuzfrog.eft
 
 import java.net.{InetAddress, SocketException}
-import java.nio.file.Path
+import java.nio.file.{Files, Path}
 
 import akka.NotUsed
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
@@ -51,6 +51,7 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
       .map(commandActor ! _).toMat(Sink.ignore)(Keep.left).run()
 
     commandActor ! forwarder //pass actorRef in
+    commandActor ! folder
     forwarder ! Ask //init command
   }
   override def close(): Unit = system.terminate()
@@ -87,11 +88,12 @@ private object LoopTcpMan {
           )
 
           case Acknowledge =>
-            Source.single(ByteString(Msg.PAYLOAD.toArray)) ++ FileIO.fromPath(file)
+            FileIO.fromPath(file).map(ByteString(Msg.PAYLOAD.toArray) ++ _)
 
           case Done =>
             shutdownCallback()
             Source.empty[ByteString]
+
         }
         respOpt.getOrElse(Source.empty[ByteString])
       } else Source.single(bs) //echo
@@ -116,8 +118,11 @@ private class CommandActor extends Actor {
     }
     //payload
     case bs: ByteString if bs.startsWith(Msg.PAYLOAD) =>
-      FileIO.toPath(destDir).runWith(Source.single(bs))
+      //FileIO.toPath(destDir).runWith(Source.single(bs))
+      Files.write(destDir.resolve(filename), bs.drop(Msg.PAYLOAD.length).toArray)
+      //todo: split IO out of this
+      forwarder ! Done
     //print echo
-    case bs: ByteString => println(bs.utf8String)
+    case bs: ByteString => println("echo:" + bs.utf8String)
   }
 }

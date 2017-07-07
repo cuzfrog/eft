@@ -26,5 +26,5 @@ private trait TcpMan {
 }
 
 private object TcpMan {
-  def apply(config: Configuration): TcpMan = ???
+  def apply(config: Configuration): TcpMan = new LoopTcpMan(config)
 }
