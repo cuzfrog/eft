@@ -94,39 +94,46 @@ private object LoopTcpMan {
 
   def constructPullFlow(dest: => Path,
                         saveFilename: String => Unit,
-                        otherConsumeF: Array[Byte] => Unit)(implicit executionContext: ExecutionContext): Flow[ByteString, ByteString, Future[IOResult]] = {
+                        otherConsumeF: Array[Byte] => Unit,
+                        receiveTestMsgConsumeF: Msg => Unit = msg => ())
+                       (implicit executionContext: ExecutionContext): Flow[ByteString, ByteString, Future[IOResult]] = {
 
     val fileSink = Flow[Msg].collect { case Payload(v) => ByteString(v) }.toMat(FileIO.toPath(dest))(Keep.right)
-    val otherSink = Flow[Msg].collect { case Other(v) => otherConsumeF(v) }.to(Sink.ignore)
-    val cmdFlow = Flow[Msg].collect {
+    val OtherSink = Flow[Msg].collect { case Other(v) => otherConsumeF(v) }.to(Sink.ignore)
+    val CmdFlow = Flow[Msg].collect {
       case Filename(v) => saveFilename(v); Acknowledge
     }
+    val testSink =
+      if (receiveTestMsgConsumeF == ((msg: Msg) => ())) Sink.ignore else Sink.foreach[Msg](receiveTestMsgConsumeF)
 
-    Flow.fromGraph(GraphDSL.create(fileSink) { implicit builder => _ =>
+    Flow.fromGraph(GraphDSL.create(fileSink) { implicit builder =>
+      FileSink =>
         import GraphDSL.Implicits._
 
-        val doneSigal = builder.materializedValue.map(_.map(_ => Done)).flatMapConcat(Source.fromFuture).outlet
-
+        val DoneSigal = builder.materializedValue.map(_.map(_ => Done)).flatMapConcat(Source.fromFuture).outlet
         /** Command router broadcast */
-        val CRB = builder.add(Broadcast[Msg](3))
-
+        val CRB = builder.add(Broadcast[Msg](4))
         /** Command merge. */
         val CM = builder.add(MergePreferred[Msg](2))
+        /** Translation layer */
+        val TL = builder.add(commandTranslationBidiFlow)
 
-        TL.out1 ~> CRB ~> fileSink
-                   CRB ~> otherSink
-                   CRB ~> cmdFlow ~> CM.preferred
-        TL.in2  <~ CM <~ Source.single(Ask) //init singal
-                   CM <~ doneSigal
-        FlowShape(TL.in1,TL.out2)
+        TL.out1 ~> CRB ~> FileSink
+        CRB ~> testSink
+        CRB ~> OtherSink
+        CRB ~> CmdFlow ~> CM.preferred
+        TL.in2 <~ CM <~ Source.single(Ask) //init singal
+        CM <~ DoneSigal
+        FlowShape(TL.in1, TL.out2)
     })
   }
 
   // ----------------- Shapes -----------------
 
   /** Tranlation layer Bidi */
-  private val TL = BidiShape.fromFlows(
-    top = Flow[ByteString].map(Msg.fromByteString).shape,
-    bottom = Flow[Msg].map(_.toByteString).shape
-  )
+  private val commandTranslationBidiFlow = BidiFlow.fromGraph(GraphDSL.create() { b =>
+    val top = b.add(Flow[ByteString].map(Msg.fromByteString))
+    val bottom = b.add(Flow[Msg].map(_.toByteString))
+    BidiShape.fromFlows(top, bottom)
+  })
 }
