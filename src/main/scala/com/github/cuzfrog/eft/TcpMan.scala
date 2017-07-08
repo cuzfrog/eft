@@ -4,6 +4,7 @@ import java.nio.file.Path
 
 import scala.language.postfixOps
 
+import Msg._
 /**
   * Stream tcp utility interface.
   */

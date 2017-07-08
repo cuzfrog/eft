@@ -16,6 +16,7 @@ import org.hamcrest.CoreMatchers._
 import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
 import scala.language.postfixOps
+import Msg._
 
 object LoopTcpManTest {
 
@@ -93,7 +94,7 @@ class LoopTcpManTest {
     (otherV: Array[Byte]) => println(ByteString(otherV).utf8String),
     Option(msg => ()) //println(s"From command broadcast:$msg")
   )
-  private def newPubSub = TestSource.probe[ByteString].via(pullFlow).toMat(TestSink.probe)(Keep.both).run
+  private def newPullPubSub = TestSource.probe[ByteString].via(pullFlow).toMat(TestSink.probe)(Keep.both).run
   private val fileSrc = FileIO.fromPath(file, 64).map(bs => Payload(bs.toArray).toByteString)
 
   //----------- tests ------------
@@ -116,7 +117,7 @@ class LoopTcpManTest {
 
   @Test
   def filenameToPull(): Unit = {
-    val (pub, sub) = newPubSub
+    val (pub, sub) = newPullPubSub
     sub.request(1).expectNext(Ask.toByteString)
     pub.sendNext(Filename("some-name").toByteString)
     sub.request(1).expectNext(Acknowledge.toByteString)
@@ -140,7 +141,7 @@ class LoopTcpManTest {
   def integrationTest(): Unit = {
     def printFlow(pr: String) = Flow[ByteString].map(Msg.fromByteString)
       .alsoTo(Sink.foreach(msg => println(s"$pr$msg"))).map(_.toByteString)
-    val result = pushFlow.via(printFlow("push-out - ")).join(pullFlow.via(printFlow("pull-out - "))).run()
+    val result = printFlow("push-in - ").via(pushFlow).join(printFlow("pull-in - ").via(pullFlow)).run()
 
     Thread.sleep(3000)
     val destContent = Files.readAllBytes(dest)

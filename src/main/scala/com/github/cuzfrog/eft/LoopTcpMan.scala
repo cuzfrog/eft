@@ -15,6 +15,8 @@ import akka.pattern.ask
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.Try
 
+import Msg._
+
 /**
   * Created by cuz on 7/6/17.
   */
@@ -46,12 +48,12 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
   override def setPull(destDir: Path): RemoteInfo = ???
 
   override def pull(codeInfo: RemoteInfo, destDir: Path): Unit = {
-    val tcpFlow = Tcp().outgoingConnection(codeInfo.availableIpWithHead, codeInfo.port)
-    val pullFlow = LoopTcpMan.constructPullFlow(
-      () => destDir.resolve(filenameRef.get()),
-      (fn: String) => filenameRef.set(fn),
-      (otherV: Array[Byte]) => println(ByteString(otherV).utf8String)
-    )
+//    val tcpFlow = Tcp().outgoingConnection(codeInfo.availableIpWithHead, codeInfo.port)
+//    val pullFlow = LoopTcpMan.constructPullFlow(
+//      () => destDir.resolve(filenameRef.get()),
+//      (fn: String) => filenameRef.set(fn),
+//      (otherV: Array[Byte]) => println(ByteString(otherV).utf8String)
+//    )
   }
   override def close(): Unit = system.terminate()
 
@@ -80,38 +82,56 @@ private object LoopTcpMan {
   def constructPushFlow(file: Path,
                         shutdownCallback: () => Unit,
                         chunkSize: Int = 8192): Flow[ByteString, ByteString, NotUsed] = {
-    Flow[ByteString].flatMapConcat { bs =>
-      Msg.fromByteString(bs) match {
-        case Ask =>
-          Source.single(Filename(file.getFileName.toString).toByteString)
 
-        case Acknowledge =>
-          FileIO.fromPath(file, chunkSize).map(chunk => Payload(chunk.toArray).toByteString)
+    val cmdFlow = Flow[Msg].flatMapConcat {
+      case Ask =>
+        Source.single(Filename(file.getFileName.toString))
 
-        case Done =>
-          shutdownCallback()
-          Source.empty[ByteString]
+      case Acknowledge =>
+        FileIO.fromPath(file, chunkSize).map(chunk => Payload(chunk.toArray)).concat(Source.single(Done))
 
-        case other: Other => Source.single(other.toByteString)
+      case Done =>
+        shutdownCallback()
+        Source.empty
 
-        case noReaction => Source.single(
-          Other(s"Unknow how to react aginst:${noReaction.getClass.getSimpleName}".getBytes).toByteString
-        )
-      }
+      case other: Other => Source.single(other)
+
+      case noReaction => Source.single(
+        Other(s"Unknow how to react aginst:${noReaction.getClass.getSimpleName}".getBytes)
+      )
     }
+
+    Flow.fromGraph(GraphDSL.create(cmdFlow) { implicit builder => CmdFlow =>
+      import GraphDSL.Implicits._
+
+      /** Translation layer */
+      val TL = builder.add(commandTranslationBidiFlow)
+      /** Merge for generate complete signal. */
+      //val CM = builder.add(MergePreferred[Msg](1))
+
+      TL.out1 ~> CmdFlow
+      TL.in2 <~ CmdFlow
+
+      FlowShape(TL.in1, TL.out2)
+    })
   }
 
   def constructPullFlow(getDest: () => Path,
-                        saveFilename: String => Unit,
+                        saveFilenameF: String => Unit,
                         otherConsumeF: Array[Byte] => Unit,
                         receiveTestMsgConsumeF: Option[Msg => Unit] = None)
                        (implicit executionContext: ExecutionContext): Flow[ByteString, ByteString, Future[IOResult]] = {
 
+    val fileDonePromise = Promise[Msg]
     val fileSink = Flow[Msg].collect { case Payload(v) => ByteString(v) }.toMat(FileIO.toPath(getDest()))(Keep.right)
     val OtherSink = Flow[Msg].collect { case Other(v) => otherConsumeF(v) }.to(Sink.ignore)
     val CmdFlow = Flow[Msg].collect {
-      case Filename(v) => saveFilename(v); Acknowledge
-    }
+      case Filename(v) => saveFilenameF(v); Acknowledge
+      case Done =>
+        fileDonePromise.success(Msg.Empty)
+        Msg.Empty
+    }.filterNot(_ == Msg.Empty)
+
     val testSink = receiveTestMsgConsumeF match {
       case None => Sink.ignore
       case Some(f) => Sink.foreach[Msg](f)
@@ -128,8 +148,11 @@ private object LoopTcpMan {
         val CM = builder.add(MergePreferred[Msg](2))
         /** Translation layer */
         val TL = builder.add(commandTranslationBidiFlow)
+        /** File merge for signaling complete. */
+        val FM = builder.add(MergePreferred[Msg](1, eagerComplete = true))
 
-        TL.out1 ~> CRB ~> FileSink
+        TL.out1 ~> CRB ~> FM.preferred
+        Source.fromFuture(fileDonePromise.future) ~> FM ~> FileSink
         CRB ~> testSink
         CRB ~> OtherSink
         CRB ~> CmdFlow ~> CM.preferred
