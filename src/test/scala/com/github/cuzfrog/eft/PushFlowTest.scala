@@ -49,8 +49,11 @@ class PushFlowTest {
   )
 
   private implicit class TestDsl(in: ByteString) {
-    def -->(expectedOut: Any): Unit = {
-      assert(expectedOut == this.throughStream)
+    def -->(expectedOut: ByteString): Unit = {
+      val result = this.throughStream
+      if (expectedOut != result) println(Msg.fromByteString(result))
+
+      assert(expectedOut == result)
     }
 
     def throughStream: ByteString = {
@@ -58,7 +61,7 @@ class PushFlowTest {
       val src = Source.single(in)
       val extractPayload = Flow[ByteString].map { bs: ByteString =>
         Msg.fromByteString(bs) match {
-          case Some(Payload(_, v)) => ByteString(v)
+          case Payload(v) => ByteString(v)
           case _ => bs
         }
       }
@@ -68,9 +71,16 @@ class PushFlowTest {
     }
   }
 
+  import boopickle.Default._
+
   @Test
   def ask(): Unit = {
-    Ask.toByteString --> ByteString(Files.readAllBytes(file))
+    Ask.toByteString --> Filename(file.getFileName.toString).toByteString
+  }
+
+  @Test
+  def ack(): Unit = {
+    Acknowledge.toByteString --> ByteString(Files.readAllBytes(file))
   }
 
   @Test

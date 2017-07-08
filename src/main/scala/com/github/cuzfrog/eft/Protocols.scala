@@ -10,9 +10,7 @@ import scala.util.Try
 private sealed trait Msg {
   /** Serialize into ByteString with head. */
   val toByteString: ByteString = {
-    ByteString.createBuilder
-      .putBytes(Msg.HEAD.toArray)
-      .putBytes(Pickle.intoBytes(this).array()).result()
+    ByteString(Msg.HEAD.toArray) ++ ByteString(Pickle.intoBytes(this))
   }
 }
 private case class RemoteInfo(ips: Seq[String], port: Int) extends Msg

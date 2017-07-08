@@ -11,7 +11,7 @@ import akka.stream.scaladsl._
 import akka.util.ByteString
 import akka.pattern.ask
 
-import scala.concurrent.{Future, Promise}
+import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.Try
 
 /**
@@ -94,7 +94,7 @@ private object LoopTcpMan {
 
   def constructPullFlow(dest: => Path,
                         saveFilename: String => Unit,
-                        otherConsumeF: Array[Byte] => Unit) = {
+                        otherConsumeF: Array[Byte] => Unit)(implicit executionContext: ExecutionContext): Flow[ByteString, ByteString, Future[IOResult]] = {
 
     val fileSink = Flow[Msg].collect { case Payload(v) => ByteString(v) }.toMat(FileIO.toPath(dest))(Keep.right)
     val otherSink = Flow[Msg].collect { case Other(v) => otherConsumeF(v) }.to(Sink.ignore)
