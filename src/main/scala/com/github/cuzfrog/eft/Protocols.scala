@@ -9,17 +9,20 @@ import scala.util.Try
 
 private sealed trait Msg {
   /** Serialize into ByteString with head. */
-  def toByteString: ByteString = {
+  val toByteString: ByteString = {
     ByteString.createBuilder
       .putBytes(Msg.HEAD.toArray)
       .putBytes(Pickle.intoBytes(this).array()).result()
   }
 }
 private case class RemoteInfo(ips: Seq[String], port: Int) extends Msg
-private case class Filename(v: String) extends Msg
 private case object Ask extends Msg
 private case object Acknowledge extends Msg
 private case object Done extends Msg
+private case class Payload(name: String, v: Array[Byte]) extends Msg
+private case class Other(v: Array[Byte]) extends Msg {
+  override val toByteString: ByteString = ByteString(v)
+}
 
 private object Msg {
   val HEAD = "[eft-msg]".getBytes.to[collection.immutable.Seq]
@@ -29,8 +32,10 @@ private object Msg {
     Try(Unpickle[Msg].fromBytes(bb)).toOption
 
   /** Deserialize ByteString which contains head. */
-  def fromByteString(bs: ByteString): Option[Msg] =
-    this.fromByteBuffer(bs.drop(Msg.HEAD.length).toByteBuffer)
+  def fromByteString(bs: ByteString): Option[Msg] = {
+    if(bs.startsWith(HEAD)) this.fromByteBuffer(bs.drop(Msg.HEAD.length).toByteBuffer)
+    else Some(Other(bs.toArray))
+  }
 
   def publishCode(info: RemoteInfo): String = {
     val port = "%04X".format(info.port)

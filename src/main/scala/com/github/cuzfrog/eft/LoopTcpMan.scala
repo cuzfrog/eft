@@ -9,6 +9,7 @@ import akka.event.Logging
 import akka.stream._
 import akka.stream.scaladsl._
 import akka.util.ByteString
+import akka.pattern.ask
 
 import scala.concurrent.{Future, Promise}
 import scala.util.Try
@@ -28,8 +29,6 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
   private lazy val port = config.port.getOrElse(NetworkUtil.freeLocalPort)
   private lazy val server = Tcp().bind("0.0.0.0", port)
 
-  private lazy val commandActor =
-    system.actorOf(Props[CommandActor], s"${config.name}-command-actor")
   //------------ Implementations ------------
   override def setPush(file: Path): RemoteInfo = {
     val flow = LoopTcpMan.constructPushFlow(file, () => system.terminate())
@@ -44,15 +43,7 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
   override def setPull(folder: Path): RemoteInfo = ???
 
   override def pull(codeInfo: RemoteInfo, folder: Path): Unit = {
-    val (ip, port) = (codeInfo.availableIpWithHead, codeInfo.port)
-    val flow = Tcp().outgoingConnection(ip, port)
-    val source = Source.actorRef[Msg](1, OverflowStrategy.dropNew)
-    val forwarder = source.map(_.toByteString).viaMat(flow)(Keep.left)
-      .map(commandActor ! _).toMat(Sink.ignore)(Keep.left).run()
 
-    commandActor ! forwarder //pass actorRef in
-    commandActor ! folder
-    forwarder ! Ask //init command
   }
   override def close(): Unit = system.terminate()
 
@@ -83,12 +74,8 @@ private object LoopTcpMan {
     Flow[ByteString].flatMapConcat { bs =>
       if (bs.startsWith(Msg.HEAD)) { //msg
         val respOpt = Msg.fromByteString(bs) map {
-          case Ask => Source.single(
-            Filename(file.getFileName.toString).toByteString
-          )
-
-          case Acknowledge =>
-            FileIO.fromPath(file).map(ByteString(Msg.PAYLOAD.toArray) ++ _)
+          case Ask =>
+            FileIO.fromPath(file).map(chunk => Payload(file.getFileName.toString, chunk.toArray).toByteString)
 
           case Done =>
             shutdownCallback()
@@ -99,30 +86,24 @@ private object LoopTcpMan {
       } else Source.single(bs) //echo
     }
   }
-}
 
-private class CommandActor extends Actor {
-  var forwarder: ActorRef = _
-  var filename: String = "unnamed"
-  var destDir: Path = _
+  def constructPullSink(ip: String, port: Int, destDir: Path) = {
+    //val tcpFlow = Tcp().outgoingConnection(ip, port)
 
-  override def receive: Receive = {
-    //provision
-    case forwarderRef: ActorRef => forwarder = forwarderRef
-    case path: Path => destDir = path
-    //commands
-    case bs: ByteString if bs.startsWith(Msg.HEAD) => Msg.fromByteString(bs) match {
-      case Some(Filename(fn)) =>
-        filename = fn
-        forwarder ! Acknowledge
-    }
-    //payload
-    case bs: ByteString if bs.startsWith(Msg.PAYLOAD) =>
-      //FileIO.toPath(destDir).runWith(Source.single(bs))
-      Files.write(destDir.resolve(filename), bs.drop(Msg.PAYLOAD.length).toArray)
-      //todo: split IO out of this
-      forwarder ! Done
-    //print echo
-    case bs: ByteString => println("echo:" + bs.utf8String)
+    Sink.fromGraph(GraphDSL.create() { implicit builder =>
+      import GraphDSL.Implicits._
+
+      val CF = Flow[ByteString].map {
+        case bs: ByteString if bs.startsWith(Msg.HEAD) => bs
+        case bs => println(bs.utf8String)
+      }
+
+      val CRB = builder.add(Broadcast[ByteString](3))
+      val filenameF = Flow[ByteString]
+
+
+      //SinkShape(bcast.in)
+      ???
+    })
   }
 }

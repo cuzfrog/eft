@@ -44,33 +44,33 @@ class PushFlowTest {
     file = file,
     () => { //mock
       mockSystemIndicator.set(false)
-      println("system terminated.")
+      println("system terminated(mock).")
     }
   )
 
   private implicit class TestDsl(in: ByteString) {
-    def -->(expectedOut: ByteString): Unit = {
+    def -->(expectedOut: Any): Unit = {
       assert(expectedOut == this.throughStream)
     }
 
     def throughStream: ByteString = {
-      val sink: Sink[ByteString, Future[ByteString]] =
-        Sink.fold(ByteString.empty)(_ ++ _)
+      val sink = Sink.fold[ByteString, ByteString](ByteString.empty)(_ ++ _)
       val src = Source.single(in)
-      val result = src.via(flow).toMat(sink)(Keep.right).run()
+      val extractPayload = Flow[ByteString].map { bs: ByteString =>
+        Msg.fromByteString(bs) match {
+          case Some(Payload(_, v)) => ByteString(v)
+          case _ => bs
+        }
+      }
+
+      val result = src.via(flow).via(extractPayload).toMat(sink)(Keep.right).run()
       Await.result(result, 3 seconds)
     }
   }
 
   @Test
   def ask(): Unit = {
-    Ask.toByteString --> Filename(file.getFileName.toString).toByteString
-  }
-
-  @Test
-  def ack(): Unit = {
-    //println("r:" + Acknowledge.toByteString.throughStream.utf8String)
-    Acknowledge.toByteString --> ByteString(Files.readAllBytes(file))
+    Ask.toByteString --> ByteString(Files.readAllBytes(file))
   }
 
   @Test

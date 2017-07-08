@@ -22,27 +22,29 @@ object Tmp extends App {
   implicit val materializer = ActorMaterializer()
   implicit val ec = system.dispatcher
 
-  val receiver = system.actorOf(Props[Receiver], "tmp-receiver")
+  private val (config, content, src, destDir) = TestFileInitial.init
+
   try {
-    val mockTcpFlow = Flow[Int].map(_ + 1)
-
-    val source = Source.single(0)
-
-    source.via(mockTcpFlow).map(receiver ! _).to(Sink.ignore).run()
+    val source = FileIO.fromPath(src, chunkSize = 1)
+    source.map(println).to(Sink.ignore).run
 
   } finally {
     Thread.sleep(2000)
     system.terminate()
   }
 
-
-  private def flowWithExtraSource[S, T](sourceFuture: Future[Source[S, T]]) =
+  private def circleFlow[I, O, T](flowToCircle: Flow[I, O, T], loopFlow: Flow[O, I, T]) =
     Flow.fromGraph(GraphDSL.create() { implicit builder =>
       import GraphDSL.Implicits._
-      val source = Source.fromFutureSource(sourceFuture)
-      val merge = builder.add(Merge[S](2))
-      source ~> merge.in(1)
-      FlowShape(merge.in(0), merge.out)
+
+      val leftMerge = builder.add(MergePreferred[I](1))
+      val rightBcast = builder.add(Broadcast[O](2))
+
+      leftMerge ~> flowToCircle ~> rightBcast
+      leftMerge.preferred <~ loopFlow <~ rightBcast
+
+
+      FlowShape(leftMerge.in(0), rightBcast.out(1))
     })
 
 }
