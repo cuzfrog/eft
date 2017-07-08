@@ -22,7 +22,7 @@ class TcpTest {
     Thread.sleep(100)
     pullNode.pull(codeInfo, destDir)
 
-    Thread.sleep(3000)
+    Thread.sleep(5000)
     assert(Files.exists(dest))
     val destContent = Files.readAllBytes(dest)
     assert(content.getBytes sameElements destContent)

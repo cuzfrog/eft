@@ -16,10 +16,10 @@ private trait TcpMan {
   def push(codeInfo: RemoteInfo, file: Path): Unit
 
   /** Setup pull listening and return pull node connection info. */
-  def setPull(folder: Path): RemoteInfo
+  def setPull(destDir: Path): RemoteInfo
 
   /** Connect push node and pull file. */
-  def pull(codeInfo: RemoteInfo, folder: Path): Unit
+  def pull(codeInfo: RemoteInfo, destDir: Path): Unit
 
   /** Terminate system and shutdown service.*/
   def close(): Unit

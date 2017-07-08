@@ -2,6 +2,7 @@ package com.github.cuzfrog.eft
 
 import java.net.{InetAddress, SocketException}
 import java.nio.file.{Files, Path}
+import java.util.concurrent.atomic.AtomicReference
 
 import akka.NotUsed
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
@@ -29,6 +30,8 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
   private lazy val port = config.port.getOrElse(NetworkUtil.freeLocalPort)
   private lazy val server = Tcp().bind("0.0.0.0", port)
 
+  private[this] val filenameRef: AtomicReference[String] = new AtomicReference("unnamed")
+
   //------------ Implementations ------------
   override def setPush(file: Path): RemoteInfo = {
     val flow = LoopTcpMan.constructPushFlow(file, () => system.terminate())
@@ -40,10 +43,15 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
 
   override def push(codeInfo: RemoteInfo, file: Path): Unit = ???
 
-  override def setPull(folder: Path): RemoteInfo = ???
+  override def setPull(destDir: Path): RemoteInfo = ???
 
-  override def pull(codeInfo: RemoteInfo, folder: Path): Unit = {
-
+  override def pull(codeInfo: RemoteInfo, destDir: Path): Unit = {
+    val tcpFlow = Tcp().outgoingConnection(codeInfo.availableIpWithHead, codeInfo.port)
+    val pullFlow = LoopTcpMan.constructPullFlow(
+      () => destDir.resolve(filenameRef.get()),
+      (fn: String) => filenameRef.set(fn),
+      (otherV: Array[Byte]) => println(ByteString(otherV).utf8String)
+    )
   }
   override def close(): Unit = system.terminate()
 
@@ -70,14 +78,15 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
 private object LoopTcpMan {
 
   def constructPushFlow(file: Path,
-                        shutdownCallback: () => Unit): Flow[ByteString, ByteString, NotUsed] = {
+                        shutdownCallback: () => Unit,
+                        chunkSize: Int = 8192): Flow[ByteString, ByteString, NotUsed] = {
     Flow[ByteString].flatMapConcat { bs =>
       Msg.fromByteString(bs) match {
         case Ask =>
           Source.single(Filename(file.getFileName.toString).toByteString)
 
         case Acknowledge =>
-          FileIO.fromPath(file).map(chunk => Payload(chunk.toArray).toByteString)
+          FileIO.fromPath(file, chunkSize).map(chunk => Payload(chunk.toArray).toByteString)
 
         case Done =>
           shutdownCallback()
@@ -92,19 +101,21 @@ private object LoopTcpMan {
     }
   }
 
-  def constructPullFlow(dest: => Path,
+  def constructPullFlow(getDest: () => Path,
                         saveFilename: String => Unit,
                         otherConsumeF: Array[Byte] => Unit,
-                        receiveTestMsgConsumeF: Msg => Unit = msg => ())
+                        receiveTestMsgConsumeF: Option[Msg => Unit] = None)
                        (implicit executionContext: ExecutionContext): Flow[ByteString, ByteString, Future[IOResult]] = {
 
-    val fileSink = Flow[Msg].collect { case Payload(v) => ByteString(v) }.toMat(FileIO.toPath(dest))(Keep.right)
+    val fileSink = Flow[Msg].collect { case Payload(v) => ByteString(v) }.toMat(FileIO.toPath(getDest()))(Keep.right)
     val OtherSink = Flow[Msg].collect { case Other(v) => otherConsumeF(v) }.to(Sink.ignore)
     val CmdFlow = Flow[Msg].collect {
       case Filename(v) => saveFilename(v); Acknowledge
     }
-    val testSink =
-      if (receiveTestMsgConsumeF == ((msg: Msg) => ())) Sink.ignore else Sink.foreach[Msg](receiveTestMsgConsumeF)
+    val testSink = receiveTestMsgConsumeF match {
+      case None => Sink.ignore
+      case Some(f) => Sink.foreach[Msg](f)
+    }
 
     Flow.fromGraph(GraphDSL.create(fileSink) { implicit builder =>
       FileSink =>
