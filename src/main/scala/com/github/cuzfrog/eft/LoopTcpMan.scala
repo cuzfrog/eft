@@ -72,38 +72,61 @@ private object LoopTcpMan {
   def constructPushFlow(file: Path,
                         shutdownCallback: () => Unit): Flow[ByteString, ByteString, NotUsed] = {
     Flow[ByteString].flatMapConcat { bs =>
-      if (bs.startsWith(Msg.HEAD)) { //msg
-        val respOpt = Msg.fromByteString(bs) map {
-          case Ask =>
-            FileIO.fromPath(file).map(chunk => Payload(file.getFileName.toString, chunk.toArray).toByteString)
+      Msg.fromByteString(bs) match {
+        case Ask =>
+          Source.single(Filename(file.getFileName.toString).toByteString)
 
-          case Done =>
-            shutdownCallback()
-            Source.empty[ByteString]
+        case Acknowledge =>
+          FileIO.fromPath(file).map(chunk => Payload(chunk.toArray).toByteString)
 
-        }
-        respOpt.getOrElse(Source.empty[ByteString])
-      } else Source.single(bs) //echo
+        case Done =>
+          shutdownCallback()
+          Source.empty[ByteString]
+
+        case other: Other => Source.single(other.toByteString)
+
+        case noReaction => Source.single(
+          Other(s"Unknow how to react aginst:${noReaction.getClass.getSimpleName}".getBytes).toByteString
+        )
+      }
     }
   }
 
-  def constructPullSink(ip: String, port: Int, destDir: Path) = {
-    //val tcpFlow = Tcp().outgoingConnection(ip, port)
+  def constructPullFlow(dest: => Path,
+                        saveFilename: String => Unit,
+                        otherConsumeF: Array[Byte] => Unit) = {
 
-    Sink.fromGraph(GraphDSL.create() { implicit builder =>
-      import GraphDSL.Implicits._
+    val fileSink = Flow[Msg].collect { case Payload(v) => ByteString(v) }.toMat(FileIO.toPath(dest))(Keep.right)
+    val otherSink = Flow[Msg].collect { case Other(v) => otherConsumeF(v) }.to(Sink.ignore)
+    val cmdFlow = Flow[Msg].collect {
+      case Filename(v) => saveFilename(v); Acknowledge
+    }
 
-      val CF = Flow[ByteString].map {
-        case bs: ByteString if bs.startsWith(Msg.HEAD) => bs
-        case bs => println(bs.utf8String)
-      }
+    Flow.fromGraph(GraphDSL.create(fileSink) { implicit builder => _ =>
+        import GraphDSL.Implicits._
 
-      val CRB = builder.add(Broadcast[ByteString](3))
-      val filenameF = Flow[ByteString]
+        val doneSigal = builder.materializedValue.map(_.map(_ => Done)).flatMapConcat(Source.fromFuture).outlet
 
+        /** Command router broadcast */
+        val CRB = builder.add(Broadcast[Msg](3))
 
-      //SinkShape(bcast.in)
-      ???
+        /** Command merge. */
+        val CM = builder.add(MergePreferred[Msg](2))
+
+        TL.out1 ~> CRB ~> fileSink
+                   CRB ~> otherSink
+                   CRB ~> cmdFlow ~> CM.preferred
+        TL.in2  <~ CM <~ Source.single(Ask) //init singal
+                   CM <~ doneSigal
+        FlowShape(TL.in1,TL.out2)
     })
   }
+
+  // ----------------- Shapes -----------------
+
+  /** Tranlation layer Bidi */
+  private val TL = BidiShape.fromFlows(
+    top = Flow[ByteString].map(Msg.fromByteString).shape,
+    bottom = Flow[Msg].map(_.toByteString).shape
+  )
 }

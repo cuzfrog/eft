@@ -25,26 +25,27 @@ object Tmp extends App {
   private val (config, content, src, destDir) = TestFileInitial.init
 
   try {
-    val source = FileIO.fromPath(src, chunkSize = 1)
-    source.map(println).to(Sink.ignore).run
+    val ftc = Flow[Int].map(_ + 1)
+    val lf = Flow[Int].filter(_ < 100)
+    circleFlow(ftc,lf,Source.single(0)).run()
 
   } finally {
     Thread.sleep(2000)
     system.terminate()
   }
 
-  private def circleFlow[I, O, T](flowToCircle: Flow[I, O, T], loopFlow: Flow[O, I, T]) =
-    Flow.fromGraph(GraphDSL.create() { implicit builder =>
+  private def circleFlow[I, O, T](flowToCircle: Flow[I, O, T], loopFlow: Flow[O, I, T], initSrc: Source[I, T]) =
+    RunnableGraph.fromGraph(GraphDSL.create() { implicit builder =>
       import GraphDSL.Implicits._
 
       val leftMerge = builder.add(MergePreferred[I](1))
-      val rightBcast = builder.add(Broadcast[O](2))
 
-      leftMerge ~> flowToCircle ~> rightBcast
-      leftMerge.preferred <~ loopFlow <~ rightBcast
+      val lf = loopFlow.shape
 
+      initSrc ~> leftMerge ~> flowToCircle ~> lf.in
+                 leftMerge.preferred       <~ lf.out
 
-      FlowShape(leftMerge.in(0), rightBcast.out(1))
+      ClosedShape
     })
 
 }

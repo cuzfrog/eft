@@ -19,7 +19,8 @@ private case class RemoteInfo(ips: Seq[String], port: Int) extends Msg
 private case object Ask extends Msg
 private case object Acknowledge extends Msg
 private case object Done extends Msg
-private case class Payload(name: String, v: Array[Byte]) extends Msg
+private case class Payload(v: Array[Byte]) extends Msg
+private case class Filename(v: String) extends Msg
 private case class Other(v: Array[Byte]) extends Msg {
   override val toByteString: ByteString = ByteString(v)
 }
@@ -27,14 +28,15 @@ private case class Other(v: Array[Byte]) extends Msg {
 private object Msg {
   val HEAD = "[eft-msg]".getBytes.to[collection.immutable.Seq]
   val PAYLOAD = "[eft-payload]".getBytes.to[collection.immutable.Seq]
+  val BadMsg = Other("[eft]Bad msg stream, which cannot be parsed.".getBytes)
 
   private def fromByteBuffer(bb: ByteBuffer): Option[Msg] =
     Try(Unpickle[Msg].fromBytes(bb)).toOption
 
   /** Deserialize ByteString which contains head. */
-  def fromByteString(bs: ByteString): Option[Msg] = {
-    if(bs.startsWith(HEAD)) this.fromByteBuffer(bs.drop(Msg.HEAD.length).toByteBuffer)
-    else Some(Other(bs.toArray))
+  def fromByteString(bs: ByteString): Msg = {
+    if (bs.startsWith(HEAD)) this.fromByteBuffer(bs.drop(Msg.HEAD.length).toByteBuffer).getOrElse(BadMsg)
+    else Other(bs.toArray)
   }
 
   def publishCode(info: RemoteInfo): String = {
