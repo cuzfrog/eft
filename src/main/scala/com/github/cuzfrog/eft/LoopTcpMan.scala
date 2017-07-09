@@ -47,14 +47,17 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
 
   override def setPull(destDir: Path): RemoteInfo = ???
 
-  override def pull(codeInfo: RemoteInfo, destDir: Path): Unit = {
-//    val tcpFlow = Tcp().outgoingConnection(codeInfo.availableIpWithHead, codeInfo.port)
-//    val pullFlow = LoopTcpMan.constructPullFlow(
-//      () => destDir.resolve(filenameRef.get()),
-//      (fn: String) => filenameRef.set(fn),
-//      (otherV: Array[Byte]) => println(ByteString(otherV).utf8String)
-//    )
+  override def pull(codeInfo: RemoteInfo, destDir: Path): Future[Option[String]] = {
+    val tcpFlow = Tcp().outgoingConnection(codeInfo.availableIpWithHead, codeInfo.port)
+    val pullFlow = LoopTcpMan.constructPullFlow(
+      () => destDir.resolve(filenameRef.get()),
+      (fn: String) => filenameRef.set(fn),
+      (otherV: Array[Byte]) => println(ByteString(otherV).utf8String)
+    )
+    val result = tcpFlow.joinMat(pullFlow)(Keep.right).run()
+    result.map(_.status.failed.toOption.map(e => s"Failed with msg:${e.getMessage}"))
   }
+
   override def close(): Unit = system.terminate()
 
 
@@ -101,18 +104,19 @@ private object LoopTcpMan {
       )
     }
 
-    Flow.fromGraph(GraphDSL.create(cmdFlow) { implicit builder => CmdFlow =>
-      import GraphDSL.Implicits._
+    Flow.fromGraph(GraphDSL.create(cmdFlow) { implicit builder =>
+      CmdFlow =>
+        import GraphDSL.Implicits._
 
-      /** Translation layer */
-      val TL = builder.add(commandTranslationBidiFlow)
-      /** Merge for generate complete signal. */
-      //val CM = builder.add(MergePreferred[Msg](1))
+        /** Translation layer */
+        val TL = builder.add(commandTranslationBidiFlow)
+        /** Merge for generate complete signal. */
+        //val CM = builder.add(MergePreferred[Msg](1))
 
-      TL.out1 ~> CmdFlow
-      TL.in2 <~ CmdFlow
+        TL.out1 ~> CmdFlow
+        TL.in2 <~ CmdFlow
 
-      FlowShape(TL.in1, TL.out2)
+        FlowShape(TL.in1, TL.out2)
     })
   }
 

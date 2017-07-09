@@ -3,8 +3,9 @@ package com.github.cuzfrog.eft
 import java.nio.file.Path
 
 import scala.language.postfixOps
-
 import Msg._
+
+import scala.concurrent.Future
 /**
   * Stream tcp utility interface.
   */
@@ -19,8 +20,8 @@ private trait TcpMan {
   /** Setup pull listening and return pull node connection info. */
   def setPull(destDir: Path): RemoteInfo
 
-  /** Connect push node and pull file. */
-  def pull(codeInfo: RemoteInfo, destDir: Path): Unit
+  /** Connect push node and pull file. If failed return an Option of failing msg.*/
+  def pull(codeInfo: RemoteInfo, destDir: Path): Future[Option[String]]
 
   /** Terminate system and shutdown service.*/
   def close(): Unit

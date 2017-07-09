@@ -1,7 +1,7 @@
 package com.github.cuzfrog.eft
 
 import java.nio.file.Files
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
@@ -21,7 +21,6 @@ import Msg._
 object LoopTcpManTest {
 
   private val system = ActorSystem("tmp")
-
 
   @BeforeClass
   def setup(): Unit = {
@@ -80,17 +79,24 @@ class LoopTcpManTest {
   }
 
   //----------- pull flow ------------
-  @volatile private var filename = "unnamed"
+  private val filenameRef = new AtomicReference("unnamed")
   @Before
   def setup(): Unit = {
     mockSystemIndicator.set(true)
-    filename = "unnamed"
+    filenameRef.set("unnamed")
     FileUtils.cleanDirectory(destDir.toFile)
   }
 
   private val pullFlow = LoopTcpMan.constructPullFlow(
-    () => destDir.resolve(filename),
-    (fn: String) => filename = fn,
+    () => {
+      val fn = destDir.resolve(filenameRef.get)
+      println(s"get filename [$fn] from ref")
+      fn
+    },
+    (fn: String) => {
+      filenameRef.set(fn)
+      println(s"store filename [$fn] to ref")
+    },
     (otherV: Array[Byte]) => println(ByteString(otherV).utf8String),
     Option(msg => ()) //println(s"From command broadcast:$msg")
   )
@@ -121,7 +127,7 @@ class LoopTcpManTest {
     sub.request(1).expectNext(Ask.toByteString)
     pub.sendNext(Filename("some-name").toByteString)
     sub.request(1).expectNext(Acknowledge.toByteString)
-    assert(filename == "some-name")
+    assert(filenameRef.get() == "some-name")
   }
 
   @Test
@@ -133,7 +139,7 @@ class LoopTcpManTest {
     //    val destContent = new String(Files.readAllBytes(destDir.resolve(filename)))
     //    println("--------------------------------------")
     //    println(destContent)
-    assert(Files.readAllBytes(file) sameElements Files.readAllBytes(destDir.resolve(filename)))
+    assert(Files.readAllBytes(file) sameElements Files.readAllBytes(destDir.resolve(filenameRef.get())))
   }
 
 
