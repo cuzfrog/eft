@@ -55,29 +55,6 @@ class LoopTcpManTest {
     chunkSize = 128
   )
 
-  private implicit class TestDsl(in: ByteString) {
-    def -->(expectedOut: ByteString): Unit = {
-      val result = this.throughStream
-      if (expectedOut != result) println(Msg.fromByteString(result))
-
-      assert(expectedOut == result)
-    }
-
-    def throughStream: ByteString = {
-      val sink = Sink.fold[ByteString, ByteString](ByteString.empty)(_ ++ _)
-      val src = Source.single(in)
-      val extractPayload = Flow[ByteString].map { bs: ByteString =>
-        Msg.fromByteString(bs) match {
-          case Payload(v) => ByteString(v)
-          case _ => bs
-        }
-      }
-
-      val result = src.via(pushFlow).via(extractPayload).toMat(sink)(Keep.right).run()
-      Await.result(result, 3 seconds)
-    }
-  }
-
   //----------- pull flow ------------
   private val filenameRef = new AtomicReference("unnamed")
   @Before
@@ -97,33 +74,45 @@ class LoopTcpManTest {
       filenameRef.set(fn)
       println(s"store filename [$fn] to ref")
     },
-    (otherV: Array[Byte]) => println(ByteString(otherV).utf8String),
-    Option(msg => ()) //println(s"From command broadcast:$msg")
+    Some { (otherV: Array[Byte]) =>
+      println(ByteString(otherV).utf8String)
+    }
   )
-  private def newPullPubSub = TestSource.probe[ByteString].via(pullFlow).toMat(TestSink.probe)(Keep.both).run
+  private def newPubSub[M](flow: Flow[ByteString, ByteString, M]) =
+    TestSource.probe[ByteString].via(flow).toMat(TestSink.probe)(Keep.both).run
   private val fileSrc = FileIO.fromPath(file, 64).map(bs => Payload(bs.toArray).toByteString)
 
   //----------- tests ------------
   @Test
   def askToPush(): Unit = {
-    Ask.toByteString --> Filename(file.getFileName.toString).toByteString
+    val (pub, sub) = newPubSub(pushFlow)
+    pub.sendNext(Ask.toByteString)
+    sub.request(1).expectNext(Filename(file.getFileName.toString).toByteString)
   }
 
   @Test
   def ackToPush(): Unit = {
-    Acknowledge.toByteString --> ByteString(Files.readAllBytes(file))
+    val (pub, sub) = newPubSub(pushFlow)
+    pub.sendNext(Acknowledge.toByteString)
+    sub.request(Long.MaxValue)
+    val receivedSeq = sub.receiveWithin(max = 3 seconds).map(Msg.fromByteString)
+    assert(receivedSeq.last == Done)
+    val receivedContent = receivedSeq.collect { case Payload(v) => v }.reduce((p1, p2) => p1 ++ p2)
+    assertArrayEquals(Files.readAllBytes(file), receivedContent)
   }
 
   @Test
   def doneToPush(): Unit = {
     assertEquals(true, mockSystemIndicator.get())
-    Done.toByteString --> ByteString.empty
+    val (pub, sub) = newPubSub(pushFlow)
+    pub.sendNext(Done.toByteString)
+    sub.request(1).expectNoMsg()
     assertEquals(false, mockSystemIndicator.get())
   }
 
   @Test
   def filenameToPull(): Unit = {
-    val (pub, sub) = newPullPubSub
+    val (pub, sub) = newPubSub(pullFlow)
     sub.request(1).expectNext(Ask.toByteString)
     pub.sendNext(Filename("some-name").toByteString)
     sub.request(1).expectNext(Acknowledge.toByteString)
@@ -131,17 +120,17 @@ class LoopTcpManTest {
   }
 
   @Test
-  def payloadTest(): Unit = {
-    val (_, sub) = fileSrc.via(pullFlow).toMat(TestSink.probe)(Keep.both).run
+  def payloadToPull(): Unit = {
+    val (ioResult, sub) = fileSrc.viaMat(pullFlow)(Keep.right).toMat(TestSink.probe)(Keep.both).run
     sub.request(1).expectNext(Ask.toByteString)
     sub.request(1).expectNext(Done.toByteString)
     //    println(content)
     //    val destContent = new String(Files.readAllBytes(destDir.resolve(filename)))
     //    println("--------------------------------------")
     //    println(destContent)
+    Await.ready(ioResult.flatten, 3 seconds)
     assert(Files.readAllBytes(file) sameElements Files.readAllBytes(destDir.resolve(filenameRef.get())))
   }
-
 
   @Test
   def integrationTest(): Unit = {
