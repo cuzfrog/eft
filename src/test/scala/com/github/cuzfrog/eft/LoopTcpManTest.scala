@@ -147,9 +147,10 @@ class LoopTcpManTest {
   def integrationTest(): Unit = {
     def printFlow(pr: String) = Flow[ByteString].map(Msg.fromByteString)
       .alsoTo(Sink.foreach(msg => println(s"$pr$msg"))).map(_.toByteString)
-    val result = printFlow("push-in - ").via(pushFlow).join(printFlow("pull-in - ").via(pullFlow)).run()
+    val result = printFlow("push-in - ").via(pushFlow)
+      .joinMat(printFlow("pull-in - ").viaMat(pullFlow)(Keep.right))(Keep.right).run()
 
-    Thread.sleep(3000)
+    Await.ready(result.flatten, 3 seconds)
     val destContent = Files.readAllBytes(dest)
     assert(content.getBytes sameElements destContent)
   }

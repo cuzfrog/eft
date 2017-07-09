@@ -1,5 +1,6 @@
 package com.github.cuzfrog.eft
 
+import java.io.IOException
 import java.net.{InetAddress, SocketException}
 import java.nio.file.{Files, Path}
 import java.util.concurrent.atomic.AtomicReference
@@ -14,7 +15,6 @@ import akka.pattern.ask
 
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.Try
-
 import Msg._
 
 /**
@@ -54,7 +54,7 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
       (fn: String) => filenameRef.set(fn),
       (otherV: Array[Byte]) => println(ByteString(otherV).utf8String)
     )
-    val result = tcpFlow.joinMat(pullFlow)(Keep.right).run()
+    val result = tcpFlow.joinMat(pullFlow)(Keep.right).run().flatten
     result.map(_.status.failed.toOption.map(e => s"Failed with msg:${e.getMessage}"))
   }
 
@@ -124,10 +124,16 @@ private object LoopTcpMan {
                         saveFilenameF: String => Unit,
                         otherConsumeF: Array[Byte] => Unit,
                         receiveTestMsgConsumeF: Option[Msg => Unit] = None)
-                       (implicit executionContext: ExecutionContext): Flow[ByteString, ByteString, Future[IOResult]] = {
+                       (implicit executionContext: ExecutionContext): Flow[ByteString, ByteString, Future[Future[IOResult]]] = {
 
     val fileDonePromise = Promise[Msg]
-    val fileSink = Flow[Msg].collect { case Payload(v) => ByteString(v) }.toMat(FileIO.toPath(getDest()))(Keep.right)
+    val fileSink = {
+      val lazyFileSink = Sink.lazyInit[ByteString, Future[IOResult]](
+        (bs) => Future(FileIO.toPath(getDest())),
+        () => Future(IOResult.createFailed(0, new IOException("No data received and thus no data written.")))
+      )
+      Flow[Msg].collect { case Payload(v) => ByteString(v) }.toMat(lazyFileSink)(Keep.right)
+    }
     val OtherSink = Flow[Msg].collect { case Other(v) => otherConsumeF(v) }.to(Sink.ignore)
     val CmdFlow = Flow[Msg].collect {
       case Filename(v) => saveFilenameF(v); Acknowledge
