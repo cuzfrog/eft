@@ -72,7 +72,7 @@ private object Msg {
     override val toByteString: ByteString = ByteString(v)
   }
 
-  val HEAD: immutable.Seq[Byte] = "[eft-msg]".getBytes.to[collection.immutable.Seq]
+  val HEAD: immutable.Seq[Byte] = "|eft-msg|".getBytes.to[collection.immutable.Seq]
   val BadMsg: Msg = Other("[eft]Bad msg stream, which cannot be parsed.".getBytes)
 
   private def fromByteBuffer(bb: ByteBuffer): Option[Msg] =

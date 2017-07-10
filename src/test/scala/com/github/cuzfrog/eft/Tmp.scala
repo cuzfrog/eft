@@ -42,27 +42,26 @@ object Tmp extends App with SimpleLogger {
   private lazy val server = Tcp().bind("0.0.0.0", 23888, halfClose = true)
 
   try {
+    val flow = Flow[ByteString].flatMapConcat(bs =>
+        Source(1 to 9).map(i=> ByteString(i.toString))
+          .concat(Source.single(ByteString("end")))
+    ).map { bs => println(s"server ~~> ${bs.utf8String}"); bs }
 
-    val flow = Flow[ByteString].flatMapConcat { s =>
-      FileIO.fromPath(src, 256)
-        .map(chunk => Msg.Payload(chunk.toArray)).concat(Source.single(Msg.PayLoadEnd))
-        .map(_.toByteString)
-    }
+    val flow2 = Flow[ByteString].merge(
+      Source(1 to 9).map(i=> ByteString(i.toString))
+        .concat(Source.single(ByteString("end")))
+    ).map { bs => println(s"server ~~> ${bs.utf8String}"); bs }
 
     server.runForeach { con =>
-      con.handleWith(flow)
+      con.handleWith(flow2)
     }
 
+
     val tcpFlow = Tcp().outgoingConnection("127.0.0.1", 23888)
-      .alsoTo(Sink.foreach(bs => println(s"tcp ~~> ${Msg.fromByteString(bs)}")))
+      //.map { bs => println(s"server ~~> ${bs.utf8String}"); bs }
 
-    val (pub, tcpCon) = TestSource.probe[ByteString].viaMat(tcpFlow)(Keep.both)
-      .viaMat(pullFlow)(Keep.left)
-      .map(Msg.fromByteString)
-      .toMat(Sink.foreach(msg => info(s" ~~> $msg")))(Keep.left).run
-
-    pub.sendNext(ByteString(1))
-    println(tcpCon.isCompleted)
+    Source.single(ByteString.empty).via(tcpFlow).map(_.utf8String)
+      .to(Sink.foreach(msg => println(s"client <~~ $msg"))).run
 
   } finally {
     Thread.sleep(2000)
