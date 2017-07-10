@@ -9,6 +9,7 @@ import akka.NotUsed
 import akka.stream._
 import akka.stream.scaladsl.Tcp.{IncomingConnection, ServerBinding}
 import akka.stream.scaladsl._
+import akka.stream.testkit.scaladsl.{TestSink, TestSource}
 import akka.util.ByteString
 
 import scala.concurrent.{Future, Promise}
@@ -25,10 +26,14 @@ object Tmp extends App {
   private val (config, content, src, destDir) = TestFileInitial.init
 
   try {
-    val ftc = Flow[Int].map(_ + 1)
-    val lf = Flow[Int].filter(_ < 100)
-    circleFlow(ftc,lf,Source.single(0)).run()
+    val flow = Flow[String].flatMapConcat { s =>
+      FileIO.fromPath(src,32)
+        .map(chunk => Msg.Payload(chunk.toArray)).concat(Source.single(Msg.PayLoadEnd))
+    }
 
+    val pub = TestSource.probe[String].via(flow).to(Sink.foreach(println)).run
+
+    pub.sendNext("init")
   } finally {
     Thread.sleep(2000)
     system.terminate()
@@ -43,7 +48,7 @@ object Tmp extends App {
       val lf = loopFlow.shape
 
       initSrc ~> leftMerge ~> flowToCircle ~> lf.in
-                 leftMerge.preferred       <~ lf.out
+      leftMerge.preferred <~ lf.out
 
       ClosedShape
     })

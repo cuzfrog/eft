@@ -96,16 +96,16 @@ class LoopTcpManTest {
     pub.sendNext(Acknowledge.toByteString)
     sub.request(Long.MaxValue)
     val receivedSeq = sub.receiveWithin(max = 3 seconds).map(Msg.fromByteString)
-    assert(receivedSeq.last == Done)
+    assert(receivedSeq.last == PayLoadEnd)
     val receivedContent = receivedSeq.collect { case Payload(v) => v }.reduce((p1, p2) => p1 ++ p2)
     assertArrayEquals(Files.readAllBytes(file), receivedContent)
   }
 
   @Test
-  def doneToPush(): Unit = {
+  def byeToPush(): Unit = {
     assertEquals(true, mockSystemIndicator.get())
     val (pub, sub) = newPubSub(pushFlow)
-    pub.sendNext(Done.toByteString)
+    pub.sendNext(Bye.toByteString)
     sub.request(1).expectNoMsg()
     assertEquals(false, mockSystemIndicator.get())
   }
@@ -123,7 +123,7 @@ class LoopTcpManTest {
   def payloadToPull(): Unit = {
     val (ioResult, sub) = fileSrc.viaMat(pullFlow)(Keep.right).toMat(TestSink.probe)(Keep.both).run
     sub.request(1).expectNext(Ask.toByteString)
-    sub.request(1).expectNext(Done.toByteString)
+    sub.request(1).expectNext(Bye.toByteString)
     //    println(content)
     //    val destContent = new String(Files.readAllBytes(destDir.resolve(filename)))
     //    println("--------------------------------------")

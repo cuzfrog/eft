@@ -21,7 +21,7 @@ private class EftMain(cmd: CommonOpt, config: Configuration) extends SimpleLogge
         if (Files.exists(file)) {
           push.address match {
             case Some(addrOrCode) =>
-              val cInfo = Msg.fromAddressOrCode(addrOrCode)
+              val cInfo = RemoteInfo.fromAddressOrCode(addrOrCode)
               tcpMan.autoClosed.foreach(_.push(cInfo, file))
             case None => tcpMan.autoClosed.foreach { tcpman =>
               val cInfo = tcpman.setPush(file)
@@ -34,7 +34,7 @@ private class EftMain(cmd: CommonOpt, config: Configuration) extends SimpleLogge
         val destDir = pull.destDir.toPath
         pull.address match {
           case Some(addrOrCode) =>
-            tcpMan.autoClosed.foreach(_.pull(Msg.fromAddressOrCode(addrOrCode), destDir))
+            tcpMan.autoClosed.foreach(_.pull(RemoteInfo.fromAddressOrCode(addrOrCode), destDir))
           case None => tcpMan.autoClosed.foreach { tcpman =>
             val cInfo = tcpman.setPull(destDir)
             printConnectionInfo(cmd, cInfo)
@@ -48,7 +48,8 @@ private class EftMain(cmd: CommonOpt, config: Configuration) extends SimpleLogge
   }
 
   private def printConnectionInfo(cmd: CommonOpt, cInfo: RemoteInfo): Unit = {
-    val code = if (cmd.printCode) Msg.publishCode(cInfo) else Msg.publishAddress(cInfo)
+    val code =
+      if (cmd.printCode) RemoteInfo.publishCode(cInfo) else RemoteInfo.publishAddress(cInfo)
     info(s"Connection code: $code listening...", withTitle = false)
   }
 }

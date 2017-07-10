@@ -33,7 +33,7 @@ class TcpManTest {
     Await.ready(result, 3 seconds)
     assert(Files.exists(dest))
     val destContent = Files.readAllBytes(dest)
-    assert(content.getBytes sameElements destContent)
+    assert(content.getBytes sameElements destContent, "content inconsistent")
   }
 
   @Test
@@ -43,6 +43,7 @@ class TcpManTest {
 
     val codeInfo = pullNode.setPull(destDir)
     val result = pushNode.push(codeInfo, src)
+
     Await.ready(result, 3 seconds)
     assert(Files.exists(dest))
     val destContent = Files.readAllBytes(dest)
@@ -51,6 +52,6 @@ class TcpManTest {
     println("--------------------------------------")
     println(new String(destContent))
 
-    assert(content.getBytes sameElements destContent)
+    assert(content.getBytes sameElements destContent, "content inconsistent")
   }
 }
