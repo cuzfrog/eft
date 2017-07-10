@@ -71,9 +71,15 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
     donePromise.future
   }
 
+  private def getDest(destDir: Path): Path = {
+    val fn = filenameRef.get()
+    debug(s"Pull: get file name[$fn] from ref.")
+    destDir.resolve(fn)
+  }
+
   override def setPull(destDir: Path): RemoteInfo = {
     val pullFlow = LoopTcpMan.constructPullFlow(
-      getDest = () => destDir.resolve(filenameRef.get()),
+      getDest = () => getDest(destDir),
       saveFilenameF = (fn: String) => filenameRef.set(fn),
       echoOther = true,
       receiveTestMsgConsumeF = Some(msg => debug(s"Pull <~~ $msg")),
@@ -89,8 +95,10 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
     val remoteIp = codeInfo.availableIpWithHead
     val tcpFlow = Tcp().outgoingConnection(remoteIp, codeInfo.port)
     val pullFlow = LoopTcpMan.constructPullFlow(
-      getDest = () => destDir.resolve(filenameRef.get()),
-      saveFilenameF = (fn: String) => filenameRef.set(fn),
+      getDest = () => getDest(destDir),
+      saveFilenameF = (fn: String) => {
+        filenameRef.set(fn)
+      },
       otherConsumeF = Some((otherV: Array[Byte]) =>
         println(s"From $remoteIp: " + ByteString(otherV).utf8String)
       ),
@@ -108,6 +116,7 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
   }
 
   override def close(): Unit = system.terminate()
+  override def isClosed: Boolean = system.whenTerminated.isCompleted
 
   //------------ Helpers ------------
   private implicit class RemoteInfoEx(in: RemoteInfo) {
@@ -168,28 +177,26 @@ private object LoopTcpMan {
           s"Unknow how to react aginst:${noReaction.getClass.getSimpleName}")
 
     }.filterNot(m => !echoOther && m.isInstanceOf[Msg.Other])
-      .alsoTo(sendTestMsgConsumeF.toSink)
+    //.alsoTo(sendTestMsgConsumeF.toSink)
 
     val OtherSink = otherConsumeF.toSinkWithFlow(Flow[Msg].collect { case Msg.Other(v) => v })
-    val TestSink = receiveTestMsgConsumeF.toSink
-
     // ------------- Graph construction --------------
     Flow.fromGraph(GraphDSL.create(cmdFlow) { implicit builder =>
       CmdFlow =>
         import GraphDSL.Implicits._
 
         /** Translation layer */
-        val TL = builder.add(commandTranslationBidiFlow)
-        /** Merge for generate complete signal. */
-        //val CM = builder.add(MergePreferred[Msg](1))
-
+        val TL = builder.add(commandTranslationBidiFlow(
+          inTestSink = receiveTestMsgConsumeF.toSink,
+          outTestSink = sendTestMsgConsumeF.toSink
+        ))
         /** Command broadcast */
-        val CB = builder.add(Broadcast[Msg](3))
+        val CB = builder.add(Broadcast[Msg](2))
 
         TL.out1 ~> CB ~> CmdFlow
-        CB ~> TestSink
         CB ~> OtherSink
         TL.in2 <~ CmdFlow
+
 
         FlowShape(TL.in1, TL.out2)
     })
@@ -219,7 +226,7 @@ private object LoopTcpMan {
     val fileDonePromise = Promise[Msg]
     val fileSink = {
       val lazyFileSink = Sink.lazyInit[ByteString, Future[IOResult]](
-        (bs) => Future(FileIO.toPath(getDest())),
+        (_) => Future(FileIO.toPath(getDest())),
         () => Future(
           IOResult.createFailed(0, new IOException("No data received and thus no data written."))
         )
@@ -240,8 +247,6 @@ private object LoopTcpMan {
       .alsoTo(sendTestMsgConsumeF.toSink)
 
     val OtherSink = otherConsumeF.toSinkWithFlow(Flow[Msg].collect { case Msg.Other(v) => v })
-    val TestSink = receiveTestMsgConsumeF.toSink
-
     // ------------- Graph construction --------------
     Flow.fromGraph(GraphDSL.create(fileSink) { implicit builder =>
       FileSink =>
@@ -250,17 +255,20 @@ private object LoopTcpMan {
         val DoneSignal = builder.materializedValue.map(_.flatten.map(_ => Msg.Bye))
           .flatMapConcat(Source.fromFuture).outlet
         /** Command router broadcast */
-        val CRB = builder.add(Broadcast[Msg](4))
+        val CRB = builder.add(Broadcast[Msg](3))
         /** Command merge. */
         val CM = builder.add(MergePreferred[Msg](2))
         /** Translation layer */
-        val TL = builder.add(commandTranslationBidiFlow)
+        /** Translation layer */
+        val TL = builder.add(commandTranslationBidiFlow(
+          inTestSink = receiveTestMsgConsumeF.toSink,
+          outTestSink = sendTestMsgConsumeF.toSink
+        ))
         /** File merge for signaling complete. */
         val FM = builder.add(MergePreferred[Msg](1, eagerComplete = true))
 
         TL.out1 ~> CRB ~> FM.preferred
         Source.fromFuture(fileDonePromise.future) ~> FM ~> FileSink
-        CRB ~> TestSink
         CRB ~> OtherSink
         CRB ~> CmdFlow ~> CM.preferred
         TL.in2 <~ CM <~ Source.single(Msg.Ask) //init singal
@@ -270,13 +278,17 @@ private object LoopTcpMan {
   }
 
   // ----------------- Shapes -----------------
-
+  private val bs2msg = Flow[ByteString].map(Msg.fromByteString)
+  private val msg2bs = Flow[Msg].map(_.toByteString)
   /** Tranlation layer Bidi */
-  private val commandTranslationBidiFlow = BidiFlow.fromGraph(GraphDSL.create() { b =>
-    val top = b.add(Flow[ByteString].map(Msg.fromByteString))
-    val bottom = b.add(Flow[Msg].map(_.toByteString))
-    BidiShape.fromFlows(top, bottom)
-  })
+  private def commandTranslationBidiFlow
+  (inTestSink: Sink[Msg, Future[Done]] = Sink.ignore,
+   outTestSink: Sink[Msg, Future[Done]] = Sink.ignore) =
+    BidiFlow.fromGraph(GraphDSL.create() { b =>
+      val top = b.add(bs2msg.alsoTo(inTestSink))
+      val bottom = b.add(Flow[Msg].alsoTo(outTestSink).via(msg2bs))
+      BidiShape.fromFlows(top, bottom)
+    })
 
   // ----------------- Helpers ------------------
   private implicit class ConsumeFOps[T](in: Option[T => Unit]) {

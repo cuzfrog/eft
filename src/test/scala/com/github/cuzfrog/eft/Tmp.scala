@@ -6,6 +6,7 @@ import akka.actor.{Actor, ActorSystem, Props}
 import java.nio.file.Paths
 
 import akka.NotUsed
+import akka.io.Inet
 import akka.stream._
 import akka.stream.scaladsl.Tcp.{IncomingConnection, ServerBinding}
 import akka.stream.scaladsl._
@@ -18,22 +19,51 @@ import arm._
 /**
   * Created by cuz on 7/3/17.
   */
-object Tmp extends App {
+object Tmp extends App with SimpleLogger {
   implicit val system = ActorSystem("tmp")
   implicit val materializer = ActorMaterializer()
   implicit val ec = system.dispatcher
 
   private val (config, content, src, destDir) = TestFileInitial.init
+  private val pullFlow = LoopTcpMan.constructPullFlow(
+    () => {
+      val fn = destDir.resolve("f1")
+      println(s"get filename [$fn] from ref")
+      fn
+    },
+    (fn: String) => {
+      println(s"store filename [$fn] to ref")
+    },
+    Some { (otherV: Array[Byte]) =>
+      println(ByteString(otherV).utf8String)
+    }
+  )
+
+  private lazy val server = Tcp().bind("0.0.0.0", 23888, halfClose = true)
 
   try {
-    val flow = Flow[String].flatMapConcat { s =>
-      FileIO.fromPath(src,32)
+
+    val flow = Flow[ByteString].flatMapConcat { s =>
+      FileIO.fromPath(src, 256)
         .map(chunk => Msg.Payload(chunk.toArray)).concat(Source.single(Msg.PayLoadEnd))
+        .map(_.toByteString)
     }
 
-    val pub = TestSource.probe[String].via(flow).to(Sink.foreach(println)).run
+    server.runForeach { con =>
+      con.handleWith(flow)
+    }
 
-    pub.sendNext("init")
+    val tcpFlow = Tcp().outgoingConnection("127.0.0.1", 23888)
+      .alsoTo(Sink.foreach(bs => println(s"tcp ~~> ${Msg.fromByteString(bs)}")))
+
+    val (pub, tcpCon) = TestSource.probe[ByteString].viaMat(tcpFlow)(Keep.both)
+      .viaMat(pullFlow)(Keep.left)
+      .map(Msg.fromByteString)
+      .toMat(Sink.foreach(msg => info(s" ~~> $msg")))(Keep.left).run
+
+    pub.sendNext(ByteString(1))
+    println(tcpCon.isCompleted)
+
   } finally {
     Thread.sleep(2000)
     system.terminate()

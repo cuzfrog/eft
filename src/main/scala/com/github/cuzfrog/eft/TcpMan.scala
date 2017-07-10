@@ -26,6 +26,8 @@ private trait TcpMan {
 
   /** Terminate system and shutdown service. */
   def close(): Unit
+
+  def isClosed:Boolean
 }
 
 private object TcpMan {

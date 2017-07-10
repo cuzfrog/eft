@@ -121,15 +121,18 @@ class LoopTcpManTest {
 
   @Test
   def payloadToPull(): Unit = {
-    val (ioResult, sub) = fileSrc.viaMat(pullFlow)(Keep.right).toMat(TestSink.probe)(Keep.both).run
-    sub.request(1).expectNext(Ask.toByteString)
+    val (ioResult, sub) = fileSrc.viaMat(pullFlow)(Keep.right)
+      .toMat(TestSink.probe)(Keep.both).run //send a complete after reading file.
+    sub.request(1).expectNext(Ask.toByteString) //init msg
     sub.request(1).expectNext(Bye.toByteString)
     //    println(content)
     //    val destContent = new String(Files.readAllBytes(destDir.resolve(filename)))
     //    println("--------------------------------------")
     //    println(destContent)
     Await.ready(ioResult.flatten, 3 seconds)
-    assert(Files.readAllBytes(file) sameElements Files.readAllBytes(destDir.resolve(filenameRef.get())))
+    assert(
+      Files.readAllBytes(file) sameElements Files.readAllBytes(destDir.resolve(filenameRef.get()))
+    )
   }
 
   @Test

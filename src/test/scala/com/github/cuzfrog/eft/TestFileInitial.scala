@@ -23,7 +23,7 @@ private object TestFileInitial {
     val config = Configuration(
       isDebug = true,
       networkTimeout = 500 millis,
-      pushChunkSize = 256
+      pushChunkSize = 2014
     )
     (config, content, src, destDir)
   }

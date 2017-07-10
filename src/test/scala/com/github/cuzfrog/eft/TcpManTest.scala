@@ -1,6 +1,7 @@
 package com.github.cuzfrog.eft
 
 import java.nio.file.Files
+import java.util.concurrent.atomic.AtomicReference
 
 import org.apache.commons.io.FileUtils
 
@@ -16,16 +17,28 @@ class TcpManTest {
   private val (config, content, src, destDir) = TestFileInitial.init
   private val dest = destDir.resolve(src.getFileName)
 
+  private val pushNodeRef = new AtomicReference[TcpMan]()
+  private val pullNodeRef = new AtomicReference[TcpMan]()
+
+  private def pushNode = pushNodeRef.get()
+  private def pullNode = pullNodeRef.get()
+
   @Before
   def setup(): Unit = {
     FileUtils.cleanDirectory(destDir.toFile)
+    pushNodeRef.set(TcpMan(config.copy(name = "push-node")))
+    pullNodeRef.set(TcpMan(config.copy(name = "pull-node")))
+  }
+
+  @After
+  def tearDown():Unit = {
+    Option(pushNodeRef.get()).foreach(_.close())
+    Option(pullNodeRef.get()).foreach(_.close())
+    Thread.sleep(2000)
   }
 
   @Test
   def setPush(): Unit = {
-    val pushNode = TcpMan(config.copy(name = "push-node1"))
-    val pullNode = TcpMan(config.copy(name = "pull-node1"))
-
     val codeInfo = pushNode.setPush(src)
     Thread.sleep(100)
     val result = pullNode.pull(codeInfo, destDir)
@@ -38,9 +51,6 @@ class TcpManTest {
 
   @Test
   def setPull(): Unit = {
-    val pushNode = TcpMan(config.copy(name = "push-node2"))
-    val pullNode = TcpMan(config.copy(name = "pull-node2"))
-
     val codeInfo = pullNode.setPull(destDir)
     val result = pushNode.push(codeInfo, src)
 
