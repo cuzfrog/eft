@@ -8,7 +8,7 @@ val root = (project in file("."))
   .settings(commonSettings, EftSettings.settings)
   .settings(
     name := "eft",
-    version := "0.1.1",
+    version := "0.2.0",
     libraryDependencies ++= Seq(
       "io.suzaku" %% "boopickle" % "1.2.6",
       "commons-io" % "commons-io" % "2.5" % Test,
