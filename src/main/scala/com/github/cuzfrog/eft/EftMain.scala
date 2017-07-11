@@ -4,6 +4,11 @@ import java.nio.file.Files
 
 import arm._
 
+import scala.concurrent.Await
+import scala.concurrent.duration._
+import scala.language.postfixOps
+
+
 /**
   * Created by cuz on 7/3/17.
   */
@@ -19,25 +24,33 @@ private class EftMain(cmd: CommonOpt, config: Configuration) extends SimpleLogge
       case push: Push =>
         val file = push.file.toPath
         if (Files.exists(file)) {
-          push.address match {
+          push.pullNode match {
             case Some(addrOrCode) =>
               val cInfo = RemoteInfo.fromAddressOrCode(addrOrCode)
-              tcpMan.autoClosed.foreach(_.push(cInfo, file))
+              tcpMan.autoClosed.foreach { tm =>
+                val result = Await.result(tm.push(cInfo, file), Duration.Inf)
+                println(result.getOrElse("Done."))
+              }
             case None => tcpMan.autoClosed.foreach { tcpman =>
               val cInfo = tcpman.setPush(file)
               printConnectionInfo(cmd, cInfo)
+              await(() => !tcpman.isClosed)
             }
           }
         }
         else err(s"File $file does not exist.")
       case pull: Pull =>
         val destDir = pull.destDir.toPath
-        pull.address match {
+        pull.pushNode match {
           case Some(addrOrCode) =>
-            tcpMan.autoClosed.foreach(_.pull(RemoteInfo.fromAddressOrCode(addrOrCode), destDir))
+            tcpMan.autoClosed.foreach { tm =>
+              val result = Await.result(tm.pull(RemoteInfo.fromAddressOrCode(addrOrCode), destDir), Duration.Inf)
+              println(result.getOrElse("Done."))
+            }
           case None => tcpMan.autoClosed.foreach { tcpman =>
             val cInfo = tcpman.setPull(destDir)
             printConnectionInfo(cmd, cInfo)
+            await(() => !tcpman.isClosed)
           }
         }
     }
@@ -47,9 +60,14 @@ private class EftMain(cmd: CommonOpt, config: Configuration) extends SimpleLogge
       if (config.isDebug) e.printStackTrace()
   }
 
+  private def await(continueToWait: () => Boolean, checkIntervalInMilli: Int = 100): Unit = {
+    while (continueToWait()) Thread.sleep(checkIntervalInMilli)
+    println("Complete.")
+  }
+
   private def printConnectionInfo(cmd: CommonOpt, cInfo: RemoteInfo): Unit = {
     val code =
       if (cmd.printCode) RemoteInfo.publishCode(cInfo) else RemoteInfo.publishAddress(cInfo)
-    info(s"Connection code: $code listening...", withTitle = false)
+    info(s"Connection info: $code listening...", withTitle = false)
   }
 }

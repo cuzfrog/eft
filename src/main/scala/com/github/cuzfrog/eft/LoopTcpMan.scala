@@ -1,20 +1,20 @@
 package com.github.cuzfrog.eft
 
 import java.io.IOException
-import java.net.{InetAddress, SocketException}
-import java.nio.file.{Files, Path}
+import java.net.InetAddress
+import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicReference
 
-import akka.{Done, NotUsed}
-import akka.actor.{Actor, ActorRef, ActorSystem, Props}
+import akka.actor.ActorSystem
 import akka.event.Logging
 import akka.stream._
 import akka.stream.scaladsl._
 import akka.util.ByteString
-import akka.pattern.ask
+import akka.{Done, NotUsed}
 
 import scala.concurrent.{ExecutionContext, Future, Promise}
-import scala.util.Try
+import scala.concurrent.duration._
+import scala.language.postfixOps
 
 /**
   * Created by cuz on 7/6/17.
@@ -81,6 +81,7 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
     val pullFlow = LoopTcpMan.constructPullFlow(
       getDest = () => getDest(destDir),
       saveFilenameF = (fn: String) => filenameRef.set(fn),
+      shutdownCallback = () => system.terminate(),
       echoOther = true,
       receiveTestMsgConsumeF = Some(msg => debug(s"Pull <~~ $msg")),
       sendTestMsgConsumeF = Some(msg => debug(s"Pull ~~> $msg"))
@@ -99,6 +100,7 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
       saveFilenameF = (fn: String) => {
         filenameRef.set(fn)
       },
+      shutdownCallback = () => system.terminate(),
       otherConsumeF = Some((otherV: Array[Byte]) =>
         println(s"From $remoteIp: " + ByteString(otherV).utf8String)
       ),
@@ -170,7 +172,7 @@ private object LoopTcpMan {
 
       case Msg.Bye =>
         shutdownCallback()
-        Source.empty
+        Source.single(Msg.Bye)
 
       case other: Msg.Other => Source.single(other) //echo
 
@@ -219,6 +221,7 @@ private object LoopTcpMan {
   def constructPullFlow(getDest: () => Path,
                         saveFilenameF: String => Unit,
                         otherConsumeF: Option[Array[Byte] => Unit] = None,
+                        shutdownCallback: () => Unit,
                         echoOther: Boolean = false,
                         receiveTestMsgConsumeF: Option[Msg => Unit] = None,
                         sendTestMsgConsumeF: Option[Msg => Unit] = None)
@@ -238,11 +241,17 @@ private object LoopTcpMan {
     }
 
     val CmdFlow: Flow[Msg, Msg, NotUsed] = Flow[Msg].collect {
-      case Msg.Filename(v) => saveFilenameF(v); Msg.Acknowledge
+      case Msg.Filename(v) =>
+        saveFilenameF(v)
+        Msg.Acknowledge
 
       case Msg.PayLoadEnd =>
         fileDonePromise.success(Msg.Empty)
         Msg.Empty
+
+      case Msg.Bye =>
+        shutdownCallback()
+        Msg.Bye
 
       case other: Msg.Other => other
 

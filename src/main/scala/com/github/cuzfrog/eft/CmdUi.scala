@@ -9,7 +9,6 @@ import scala.concurrent.duration._
 import scala.language.postfixOps
 
 object CmdUi extends App {
-  Usage
 
   Cli.parse(args)
     .version(getClass.getPackage.getImplementationVersion)
@@ -35,19 +34,17 @@ private sealed trait CommonOpt {
 }
 
 private class Push extends Command(
-  description = "publish a file and wait for pulling from client")
+  description = "push a file to pull node | publish a file and wait for pulling from remote")
   with CommonOpt {
   var file = arg[File](required = true, description = "file to send")
-  var address = arg[Option[String]](required = false,
-    description = "address or connection code, e.g. 127.0.0.1:8088")
+  var pullNode = opt[Option[String]](description = "address or connection code, e.g. 127.0.0.1:8088")
 }
 
 private class Pull extends Command(
-  description = "pull a published file from push node")
+  description = "pull a published file from push node | request pull and wait for pushing from remote")
   with CommonOpt {
   var destDir =
     arg[File](required = false, default = Paths.get(".").toFile,
       description = "dest dir to save pulled file")
-  var address = arg[Option[String]](required = false,
-    description = "address or connection code, e.g. 127.0.0.1:8088")
+  var pushNode = opt[Option[String]](description = "address or connection code, e.g. 127.0.0.1:8088")
 }
