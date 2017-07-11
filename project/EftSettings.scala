@@ -6,6 +6,7 @@ import sbtassembly.AssemblyKeys.assembly
 object EftSettings {
   val settings = Seq(
     assembly := (assembly dependsOn generateSh).value,
+    test in assembly := {},
     generateSh := {
       val file = crossTarget.value / "eft.bat"
       val batWdir = """%~dp0\"""

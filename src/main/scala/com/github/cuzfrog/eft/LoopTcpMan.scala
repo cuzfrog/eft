@@ -44,7 +44,7 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
       sendTestMsgConsumeF = Some(msg => debug(s"Push ~~> $msg"))
     )
     server.runForeach { connection =>
-      connection.handleWith(pushFlow)
+      connection.handleWith(pushFlow.join(LoopTcpMan.FramingBidi.reversed))
     }
     RemoteInfo(NetworkUtil.getLocalIpAddress, port)
   }
@@ -67,7 +67,7 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
       receiveTestMsgConsumeF = Some(msg => debug(s"Push <~~ $msg")),
       sendTestMsgConsumeF = Some(msg => debug(s"Push ~~> $msg"))
     )
-    tcpFlow.join(pushFlow).run()
+    tcpFlow.join(LoopTcpMan.FramingBidi).join(pushFlow).run()
     donePromise.future
   }
 
@@ -86,7 +86,7 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
       sendTestMsgConsumeF = Some(msg => debug(s"Pull ~~> $msg"))
     )
     server.runForeach { connection =>
-      connection.handleWith(pullFlow)
+      connection.handleWith(pullFlow.join(LoopTcpMan.FramingBidi.reversed))
     }
     RemoteInfo(NetworkUtil.getLocalIpAddress, port)
   }
@@ -105,7 +105,9 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
       receiveTestMsgConsumeF = Some(msg => debug(s"Pull <~~ $msg")),
       sendTestMsgConsumeF = Some(msg => debug(s"Pull ~~> $msg"))
     )
-    val result = tcpFlow.joinMat(pullFlow)(Keep.right).run().flatten
+    val result = tcpFlow
+      .join(LoopTcpMan.FramingBidi)
+      .joinMat(pullFlow)(Keep.right).run().flatten
     result.map { ioResult =>
       Future {
         Thread.sleep(300)
@@ -186,11 +188,11 @@ private object LoopTcpMan {
         import GraphDSL.Implicits._
 
         /** Translation layer */
-        val TL = builder.add(FramingBidi.atop(
+        val TL = builder.add(
           MsgTranslationBidi(
             inTestSink = receiveTestMsgConsumeF.toSink,
             outTestSink = sendTestMsgConsumeF.toSink
-          ))
+          )
         )
         /** Command broadcast */
         val CB = builder.add(Broadcast[Msg](2))
@@ -261,12 +263,12 @@ private object LoopTcpMan {
         val CM = builder.add(MergePreferred[Msg](2))
 
         /** Translation layer */
-        val TL = builder.add(FramingBidi.atop(
+        val TL = builder.add(
           MsgTranslationBidi(
             inTestSink = receiveTestMsgConsumeF.toSink,
             outTestSink = sendTestMsgConsumeF.toSink
           )
-        ))
+        )
         /** File merge for signaling complete. */
         val FM = builder.add(MergePreferred[Msg](1, eagerComplete = true))
         //@formatter:off
@@ -314,7 +316,7 @@ private object LoopTcpMan {
     *     +----------------------------+
     */
   //@formatter:on
-  private val FramingBidi = {
+  val FramingBidi = {
     def short2ByteString(sh: Short): ByteString = {
       val b0 = (sh >> 8).toByte
       val b1 = sh.toByte
@@ -325,7 +327,6 @@ private object LoopTcpMan {
       Flow[ByteString].map(bs => short2ByteString(bs.length.toShort) ++ bs)
     )
   }
-
 
   // ----------------- Helpers ------------------
   private implicit class ConsumeFOps[T](in: Option[T => Unit]) {
