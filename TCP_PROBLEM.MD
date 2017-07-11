@@ -37,3 +37,6 @@ client <~~ 9
 client <~~ end
 */
 ```
+
+`Tcp().outgoingConnection` is not able to preserve elements barriers. 
+**Explicit `Framing` should be used here.**

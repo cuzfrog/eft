@@ -1,6 +1,7 @@
 package com.github.cuzfrog.eft
 
 import java.net.InetAddress
+import java.nio.{ByteBuffer, ByteOrder}
 
 import akka.actor.{Actor, ActorSystem, Props}
 import java.nio.file.Paths
@@ -39,18 +40,25 @@ object Tmp extends App with SimpleLogger {
     }
   )
 
+  def short2Bytes(sh: Short): Array[Byte] = {
+    val b0 = (sh >> 8).toByte
+    val b1 = sh.toByte
+    Array(b1, b0)
+  }
+
+  private val FramingBidi = BidiFlow.fromFlows(
+    Framing.lengthField(fieldLength = 2, maximumFrameLength = Short.MaxValue).map(_.drop(2)),
+    Flow[ByteString].map(bs => ByteString(short2Bytes(bs.length.toShort)) ++ bs)
+  )
   private lazy val server = Tcp().bind("0.0.0.0", 23888, halfClose = true)
 
   try {
-    val flow = Flow[ByteString].flatMapConcat(bs =>
-        Source(1 to 9).map(i=> ByteString(i.toString))
-          .concat(Source.single(ByteString("end")))
-    ).map { bs => println(s"server ~~> ${bs.utf8String}"); bs }
-
     val flow2 = Flow[ByteString].merge(
-      Source(1 to 9).map(i=> ByteString(i.toString))
+      FileIO.fromPath(src,2048)
         .concat(Source.single(ByteString("end")))
-    ).map { bs => println(s"server ~~> ${bs.utf8String}"); bs }
+    )
+      .map { bs => println(s"server ~~> ${bs.utf8String}"); bs }
+      .join(FramingBidi.reversed)
 
     server.runForeach { con =>
       con.handleWith(flow2)
@@ -58,7 +66,10 @@ object Tmp extends App with SimpleLogger {
 
 
     val tcpFlow = Tcp().outgoingConnection("127.0.0.1", 23888)
-      //.map { bs => println(s"server ~~> ${bs.utf8String}"); bs }
+      .map { bs => println(s"tcp-h size ${bs.size}"); bs }
+      .join(FramingBidi)
+      .map { bs => println(s"tcp-d size ${bs.size}"); bs }
+    //
 
     Source.single(ByteString.empty).via(tcpFlow).map(_.utf8String)
       .to(Sink.foreach(msg => println(s"client <~~ $msg"))).run

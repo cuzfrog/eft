@@ -186,18 +186,19 @@ private object LoopTcpMan {
         import GraphDSL.Implicits._
 
         /** Translation layer */
-        val TL = builder.add(commandTranslationBidiFlow(
-          inTestSink = receiveTestMsgConsumeF.toSink,
-          outTestSink = sendTestMsgConsumeF.toSink
-        ))
+        val TL = builder.add(FramingBidi.atop(
+          MsgTranslationBidi(
+            inTestSink = receiveTestMsgConsumeF.toSink,
+            outTestSink = sendTestMsgConsumeF.toSink
+          ))
+        )
         /** Command broadcast */
         val CB = builder.add(Broadcast[Msg](2))
-
+        //@formatter:off
         TL.out1 ~> CB ~> CmdFlow
-        CB ~> OtherSink
-        TL.in2 <~ CmdFlow
-
-
+                   CB ~> OtherSink
+        TL.in2        <~ CmdFlow
+        //@formatter:on
         FlowShape(TL.in1, TL.out2)
     })
   }
@@ -258,37 +259,73 @@ private object LoopTcpMan {
         val CRB = builder.add(Broadcast[Msg](3))
         /** Command merge. */
         val CM = builder.add(MergePreferred[Msg](2))
+
         /** Translation layer */
-        /** Translation layer */
-        val TL = builder.add(commandTranslationBidiFlow(
-          inTestSink = receiveTestMsgConsumeF.toSink,
-          outTestSink = sendTestMsgConsumeF.toSink
+        val TL = builder.add(FramingBidi.atop(
+          MsgTranslationBidi(
+            inTestSink = receiveTestMsgConsumeF.toSink,
+            outTestSink = sendTestMsgConsumeF.toSink
+          )
         ))
         /** File merge for signaling complete. */
         val FM = builder.add(MergePreferred[Msg](1, eagerComplete = true))
-
+        //@formatter:off
         TL.out1 ~> CRB ~> FM.preferred
         Source.fromFuture(fileDonePromise.future) ~> FM ~> FileSink
         CRB ~> OtherSink
         CRB ~> CmdFlow ~> CM.preferred
         TL.in2 <~ CM <~ Source.single(Msg.Ask) //init singal
         CM <~ DoneSignal
+        //@formatter:on
         FlowShape(TL.in1, TL.out2)
     })
   }
 
-  // ----------------- Shapes -----------------
-  private val bs2msg = Flow[ByteString].map(Msg.fromByteString)
-  private val msg2bs = Flow[Msg].map(_.toByteString)
-  /** Tranlation layer Bidi */
-  private def commandTranslationBidiFlow
+  // ----------------- Protocol layers: -----------------
+
+  /** Msg Translation layer Bidi (Msg <===> ByteString) */
+  private def MsgTranslationBidi
   (inTestSink: Sink[Msg, Future[Done]] = Sink.ignore,
    outTestSink: Sink[Msg, Future[Done]] = Sink.ignore) =
     BidiFlow.fromGraph(GraphDSL.create() { b =>
+      val bs2msg = Flow[ByteString].map(Msg.fromByteString)
+      val msg2bs = Flow[Msg].map(_.toByteString)
+
       val top = b.add(bs2msg.alsoTo(inTestSink))
       val bottom = b.add(Flow[Msg].alsoTo(outTestSink).via(msg2bs))
       BidiShape.fromFlows(top, bottom)
     })
+
+  //@formatter:off
+  /**
+    * Add 16bit length field at the beginning of element for framing.
+    * See Akka issue #23325
+    *
+    *     +----------------------------+
+    *     | Resulting BidiFlow         |
+    *     |                            |
+    *     |  +----------------------+  |
+    * I1 ~~> |       Framing        | ~~> O1
+    *     |  +----------------------+  |
+    *     |                            |
+    *     |  +----------------------+  |
+    * O2 <~~ |   Add length field    | <~~ I2
+    *     |  +----------------------+  |
+    *     +----------------------------+
+    */
+  //@formatter:on
+  private val FramingBidi = {
+    def short2ByteString(sh: Short): ByteString = {
+      val b0 = (sh >> 8).toByte
+      val b1 = sh.toByte
+      ByteString(Array(b1, b0)) //LITTLE_ENDIAN
+    }
+    BidiFlow.fromFlows(
+      Framing.lengthField(fieldLength = 2, maximumFrameLength = Short.MaxValue).map(_.drop(2)),
+      Flow[ByteString].map(bs => short2ByteString(bs.length.toShort) ++ bs)
+    )
+  }
+
 
   // ----------------- Helpers ------------------
   private implicit class ConsumeFOps[T](in: Option[T => Unit]) {
