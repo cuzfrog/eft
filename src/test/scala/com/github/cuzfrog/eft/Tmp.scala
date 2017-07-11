@@ -26,17 +26,15 @@ object Tmp extends App with SimpleLogger {
   implicit val ec = system.dispatcher
 
   private val (config, content, src, destDir) = TestFileInitial.init
-  private val pullFlow = LoopTcpMan.constructPullFlow(
-    () => {
+  private val pullFlow = LoopTcpMan.constructSymmetricFlow(
+    nodeType = Node.Pull,
+    getPath = () => {
       val fn = destDir.resolve("f1")
       println(s"get filename [$fn] from ref")
       fn
     },
-    (fn: String) => {
+    saveFilenameF = (fn: String) => {
       println(s"store filename [$fn] to ref")
-    },
-    Some { (otherV: Array[Byte]) =>
-      println(ByteString(otherV).utf8String)
     }
   )
 
@@ -54,7 +52,7 @@ object Tmp extends App with SimpleLogger {
 
   try {
     val flow2 = Flow[ByteString].merge(
-      FileIO.fromPath(src,2048)
+      FileIO.fromPath(src, 2048)
         .concat(Source.single(ByteString("end")))
     )
       .map { bs => println(s"server ~~> ${bs.utf8String}"); bs }

@@ -46,9 +46,10 @@ class LoopTcpManTest {
 
   //----------- push flow ------------
   private val mockSystemIndicator = new AtomicBoolean(false)
-  private val pushFlow = LoopTcpMan.constructPushFlow(
-    file = file,
-    () => { //mock
+  private val pushFlow = LoopTcpMan.constructSymmetricFlow(
+    nodeType = Node.Push,
+    getPath =  () => file,
+    shutdownCallback = () => { //mock
       mockSystemIndicator.set(false)
       println("system terminated(mock).")
     },
@@ -64,18 +65,16 @@ class LoopTcpManTest {
     FileUtils.cleanDirectory(destDir.toFile)
   }
 
-  private val pullFlow = LoopTcpMan.constructPullFlow(
-    () => {
+  private val pullFlow = LoopTcpMan.constructSymmetricFlow(
+    nodeType = Node.Pull ,
+    getPath = () => {
       val fn = destDir.resolve(filenameRef.get)
       println(s"get filename [$fn] from ref")
       fn
     },
-    (fn: String) => {
+    saveFilenameF = (fn: String) => {
       filenameRef.set(fn)
       println(s"store filename [$fn] to ref")
-    },
-    Some { (otherV: Array[Byte]) =>
-      println(ByteString(otherV).utf8String)
     }
   )
   private def newPubSub[M](flow: Flow[ByteString, ByteString, M]) =
@@ -105,8 +104,8 @@ class LoopTcpManTest {
   def byeToPush(): Unit = {
     assertEquals(true, mockSystemIndicator.get())
     val (pub, sub) = newPubSub(pushFlow)
-    pub.sendNext(Bye.toByteString)
-    sub.request(1).expectNoMsg()
+    pub.sendNext(Bye(0).toByteString)
+    sub.request(1).expectNext(Bye(1).toByteString)
     assertEquals(false, mockSystemIndicator.get())
   }
 
@@ -124,7 +123,7 @@ class LoopTcpManTest {
     val (ioResult, sub) = fileSrc.viaMat(pullFlow)(Keep.right)
       .toMat(TestSink.probe)(Keep.both).run //send a complete after reading file.
     sub.request(1).expectNext(Ask.toByteString) //init msg
-    sub.request(1).expectNext(Bye.toByteString)
+    sub.request(1).expectNext(Bye(0).toByteString)
     //    println(content)
     //    val destContent = new String(Files.readAllBytes(destDir.resolve(filename)))
     //    println("--------------------------------------")

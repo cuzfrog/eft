@@ -13,7 +13,6 @@ import akka.util.ByteString
 import akka.{Done, NotUsed}
 
 import scala.concurrent.{ExecutionContext, Future, Promise}
-import scala.concurrent.duration._
 import scala.language.postfixOps
 
 /**
@@ -35,8 +34,9 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
 
   //------------ Implementations ------------
   override def setPush(file: Path): RemoteInfo = {
-    val pushFlow = LoopTcpMan.constructPushFlow(
-      file,
+    val pushFlow = LoopTcpMan.constructSymmetricFlow(
+      nodeType = Node.Push,
+      getPath = () => file,
       shutdownCallback = () => system.terminate(),
       echoOther = true,
       chunkSize = config.pushChunkSize,
@@ -53,8 +53,9 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
     val donePromise = Promise[Option[String]]
     val remoteIp = codeInfo.availableIpWithHead
     val tcpFlow = Tcp().outgoingConnection(remoteIp, codeInfo.port)
-    val pushFlow = LoopTcpMan.constructPushFlow(
-      file,
+    val pushFlow = LoopTcpMan.constructSymmetricFlow(
+      nodeType = Node.Push,
+      getPath = () => file,
       shutdownCallback = () => {
         system.terminate()
         debug(s"System[${system.name}] to terminate.")
@@ -78,8 +79,9 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
   }
 
   override def setPull(destDir: Path): RemoteInfo = {
-    val pullFlow = LoopTcpMan.constructPullFlow(
-      getDest = () => getDest(destDir),
+    val pullFlow = LoopTcpMan.constructSymmetricFlow(
+      nodeType = Node.Pull,
+      getPath = () => getDest(destDir),
       saveFilenameF = (fn: String) => filenameRef.set(fn),
       shutdownCallback = () => system.terminate(),
       echoOther = true,
@@ -95,11 +97,10 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
   override def pull(codeInfo: RemoteInfo, destDir: Path): Future[Option[String]] = {
     val remoteIp = codeInfo.availableIpWithHead
     val tcpFlow = Tcp().outgoingConnection(remoteIp, codeInfo.port)
-    val pullFlow = LoopTcpMan.constructPullFlow(
-      getDest = () => getDest(destDir),
-      saveFilenameF = (fn: String) => {
-        filenameRef.set(fn)
-      },
+    val pullFlow = LoopTcpMan.constructSymmetricFlow(
+      nodeType = Node.Pull,
+      getPath = () => getDest(destDir),
+      saveFilenameF = (fn: String) => filenameRef.set(fn),
       shutdownCallback = () => system.terminate(),
       otherConsumeF = Some((otherV: Array[Byte]) =>
         println(s"From $remoteIp: " + ByteString(otherV).utf8String)
@@ -143,74 +144,9 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
 private object LoopTcpMan {
 
   /**
-    * Construct a push flow.
+    * Construct a symmetric flow.
     *
-    * @param file             the Path of the file about to send.
-    * @param shutdownCallback call back to shutdown the system
-    *                         (should use this to terminate ActorSystem).
-    * @param echoOther        whether to echo Other msg.
-    * @param chunkSize        set chunkSize of FileIO.fromPath
-    * @return a flow containing push logic.
-    */
-  def constructPushFlow(file: Path,
-                        shutdownCallback: () => Unit,
-                        echoOther: Boolean = false,
-                        chunkSize: Int = 8192,
-                        otherConsumeF: Option[Array[Byte] => Unit] = None,
-                        receiveTestMsgConsumeF: Option[Msg => Unit] = None,
-                        sendTestMsgConsumeF: Option[Msg => Unit] = None)
-  : Flow[ByteString, ByteString, NotUsed] = {
-
-    // ------------- Component --------------
-    val cmdFlow: Flow[Msg, Msg, NotUsed] = Flow[Msg].flatMapConcat {
-      case Msg.Ask =>
-        Source.single(Msg.Filename(file.getFileName.toString))
-
-      case Msg.Acknowledge =>
-        FileIO.fromPath(file, chunkSize)
-          .map(chunk => Msg.Payload(chunk.toArray)).concat(Source.single(Msg.PayLoadEnd))
-
-      case Msg.Bye =>
-        shutdownCallback()
-        Source.single(Msg.Bye)
-
-      case other: Msg.Other => Source.single(other) //echo
-
-      case noReaction =>
-        throw new IllegalArgumentException(
-          s"Unknow how to react aginst:${noReaction.getClass.getSimpleName}")
-
-    }.filterNot(m => !echoOther && m.isInstanceOf[Msg.Other])
-    //.alsoTo(sendTestMsgConsumeF.toSink)
-
-    val OtherSink = otherConsumeF.toSinkWithFlow(Flow[Msg].collect { case Msg.Other(v) => v })
-    // ------------- Graph construction --------------
-    Flow.fromGraph(GraphDSL.create(cmdFlow) { implicit builder =>
-      CmdFlow =>
-        import GraphDSL.Implicits._
-
-        /** Translation layer */
-        val TL = builder.add(
-          MsgTranslationBidi(
-            inTestSink = receiveTestMsgConsumeF.toSink,
-            outTestSink = sendTestMsgConsumeF.toSink
-          )
-        )
-        /** Command broadcast */
-        val CB = builder.add(Broadcast[Msg](2))
-        //@formatter:off
-        TL.out1 ~> CB ~> CmdFlow
-                   CB ~> OtherSink
-        TL.in2        <~ CmdFlow
-        //@formatter:on
-        FlowShape(TL.in1, TL.out2)
-    })
-  }
-
-  /**
-    * Construct a pull flow.
-    *
-    * @param getDest                function to get destination path.
+    * @param getPath                function to get destination path.
     * @param saveFilenameF          function to store filename.
     * @param otherConsumeF          function to consume Other msg.
     * @param echoOther              whether to echo Other msg.
@@ -218,21 +154,23 @@ private object LoopTcpMan {
     * @param executionContext       implicit ExecutionContext
     * @return a flow containing pull logic, materializing Future of IOResult.
     */
-  def constructPullFlow(getDest: () => Path,
-                        saveFilenameF: String => Unit,
-                        otherConsumeF: Option[Array[Byte] => Unit] = None,
-                        shutdownCallback: () => Unit,
-                        echoOther: Boolean = false,
-                        receiveTestMsgConsumeF: Option[Msg => Unit] = None,
-                        sendTestMsgConsumeF: Option[Msg => Unit] = None)
-                       (implicit executionContext: ExecutionContext)
+  def constructSymmetricFlow(nodeType: Node,
+                             getPath: () => Path,
+                             saveFilenameF: String => Unit = _ => (),
+                             shutdownCallback: () => Unit = () => (),
+                             otherConsumeF: Option[Array[Byte] => Unit] = None,
+                             chunkSize: Int = 8192,
+                             echoOther: Boolean = false,
+                             receiveTestMsgConsumeF: Option[Msg => Unit] = None,
+                             sendTestMsgConsumeF: Option[Msg => Unit] = None)
+                            (implicit executionContext: ExecutionContext)
   : Flow[ByteString, ByteString, Future[Future[IOResult]]] = {
 
     // ------------- Component --------------
     val fileDonePromise = Promise[Msg]
     val fileSink = {
       val lazyFileSink = Sink.lazyInit[ByteString, Future[IOResult]](
-        (_) => Future(FileIO.toPath(getDest())),
+        (_) => Future(FileIO.toPath(getPath())),
         () => Future(
           IOResult.createFailed(0, new IOException("No data received and thus no data written."))
         )
@@ -240,23 +178,36 @@ private object LoopTcpMan {
       Flow[Msg].collect { case Msg.Payload(v) => ByteString(v) }.toMat(lazyFileSink)(Keep.right)
     }
 
-    val CmdFlow: Flow[Msg, Msg, NotUsed] = Flow[Msg].collect {
+    val CmdFlow: Flow[Msg, Msg, NotUsed] = Flow[Msg].flatMapConcat {
+      case Msg.Ask =>
+        Source.single(Msg.Filename(getPath().getFileName.toString))
+
       case Msg.Filename(v) =>
         saveFilenameF(v)
-        Msg.Acknowledge
+        Source.single(Msg.Acknowledge)
+
+      case _: Msg.Payload => Source.empty
 
       case Msg.PayLoadEnd =>
         fileDonePromise.success(Msg.Empty)
-        Msg.Empty
+        Source.empty
 
-      case Msg.Bye =>
+      case Msg.Acknowledge =>
+        FileIO.fromPath(getPath(), chunkSize)
+          .map(chunk => Msg.Payload(chunk.toArray)).concat(Source.single(Msg.PayLoadEnd))
+
+      case Msg.Bye(n) =>
         shutdownCallback()
-        Msg.Bye
+        if (n < 3) Source.single(Msg.Bye(n + 1)) else Source.empty
 
-      case other: Msg.Other => other
+      case other: Msg.Other => Source.single(other) //echo
 
-    }.filterNot(_ == Msg.Empty).filterNot(m => !echoOther && m.isInstanceOf[Msg.Other])
-      .alsoTo(sendTestMsgConsumeF.toSink)
+      case noReaction =>
+        throw new IllegalArgumentException(
+          s"Unknow how to react aginst:${noReaction.getClass.getSimpleName}")
+
+    }.filterNot(_ == Msg.Empty)
+      .filterNot(m => !echoOther && m.isInstanceOf[Msg.Other])
 
     val OtherSink = otherConsumeF.toSinkWithFlow(Flow[Msg].collect { case Msg.Other(v) => v })
     // ------------- Graph construction --------------
@@ -264,7 +215,7 @@ private object LoopTcpMan {
       FileSink =>
         import GraphDSL.Implicits._
 
-        val DoneSignal = builder.materializedValue.map(_.flatten.map(_ => Msg.Bye))
+        val DoneSignal = builder.materializedValue.map(_.flatten.map(_ => Msg.Bye(0)))
           .flatMapConcat(Source.fromFuture).outlet
         /** Command router broadcast */
         val CRB = builder.add(Broadcast[Msg](3))
@@ -280,13 +231,20 @@ private object LoopTcpMan {
         )
         /** File merge for signaling complete. */
         val FM = builder.add(MergePreferred[Msg](1, eagerComplete = true))
+        /** File complete signal */
+        val CompleteSignal = Source.fromFuture(fileDonePromise.future)
+
+        val InitSignal = nodeType match {
+          case Node.Push => Source.empty
+          case Node.Pull => Source.single(Msg.Ask)
+        }
         //@formatter:off
         TL.out1 ~> CRB ~> FM.preferred
-        Source.fromFuture(fileDonePromise.future) ~> FM ~> FileSink
-        CRB ~> OtherSink
-        CRB ~> CmdFlow ~> CM.preferred
-        TL.in2 <~ CM <~ Source.single(Msg.Ask) //init singal
-        CM <~ DoneSignal
+        CompleteSignal ~> FM ~> FileSink
+                   CRB ~> OtherSink
+                   CRB ~> CmdFlow ~> CM.preferred
+        TL.in2 <~ CM <~ InitSignal
+                  CM <~ DoneSignal
         //@formatter:on
         FlowShape(TL.in1, TL.out2)
     })

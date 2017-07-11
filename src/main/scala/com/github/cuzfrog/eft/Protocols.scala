@@ -61,7 +61,7 @@ private object Msg {
 
   case object Ask extends Msg
   case object Acknowledge extends Msg
-  case object Bye extends Msg
+  case class Bye(bounceCnt: Int) extends Msg
   case object Empty extends Msg {
     override val toByteString: ByteString = ByteString.empty
   }
@@ -85,4 +85,10 @@ private object Msg {
     }
     else if (bs.isEmpty) Empty else Other(bs.toArray)
   }
+}
+
+private sealed trait Node
+private object Node {
+  case object Push extends Node
+  case object Pull extends Node
 }
