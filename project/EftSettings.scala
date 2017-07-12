@@ -5,7 +5,6 @@ import sbtassembly.AssemblyKeys.assembly
 
 object EftSettings {
   val settings = Seq(
-    assembly := (assembly dependsOn generateSh).value,
     test in assembly := {},
     generateSh := {
       val file = crossTarget.value / "eft.bat"
@@ -26,6 +25,7 @@ object EftSettings {
       val cmd =s"""zip ${name.value}.zip ${files.mkString(" ")}""".mkString
       Process(cmd, crossTarget.value) ! log
       Process(s"cp ${name.value}.zip /tmp/", crossTarget.value) ! log
-    }
+    },
+    generateSh := (generateSh triggeredBy assembly).value
   )
 }
