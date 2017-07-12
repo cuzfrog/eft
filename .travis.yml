@@ -30,9 +30,3 @@ deploy:
   skip_cleanup: true
   on:
     tags: true
-
-notifications:
-  email:
-    recipients:
-    - cuzfrog@139.com
-    on_success: always
