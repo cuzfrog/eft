@@ -210,6 +210,7 @@ private object LoopTcpMan {
       .filterNot(m => !echoOther && m.isInstanceOf[Msg.Other])
 
     val OtherSink = otherConsumeF.toSinkWithFlow(Flow[Msg].collect { case Msg.Other(v) => v })
+
     // ------------- Graph construction --------------
     Flow.fromGraph(GraphDSL.create(fileSink) { implicit builder =>
       FileSink =>
@@ -251,8 +252,21 @@ private object LoopTcpMan {
   }
 
   // ----------------- Protocol layers: -----------------
-
-  /** Msg Translation layer Bidi (Msg <===> ByteString) */
+  //@formatter:off
+  /** Msg Translation layer Bidi (Msg <===> ByteString)
+    *
+    *     +----------------------------+
+    *     | Translation BidiFlow       |
+    *     |  +--------------+-------+  |
+    * I1 ~~> |  ByteString ==> Msg  | ~~> O1
+    *     |  +----------------------+  |
+    *     |                            |
+    *     |  +----------------------+  |
+    * O2 <~~ |  ByteString <== Msg  | <~~ I2
+    *     |  +----------------------+  |
+    *     +----------------------------+
+    */
+  //@formatter:on
   private def MsgTranslationBidi
   (inTestSink: Sink[Msg, Future[Done]] = Sink.ignore,
    outTestSink: Sink[Msg, Future[Done]] = Sink.ignore) =
@@ -271,7 +285,7 @@ private object LoopTcpMan {
     * See Akka issue #23325
     *
     *     +----------------------------+
-    *     | Resulting BidiFlow         |
+    *     | Framing BidiFlow         |
     *     |                            |
     *     |  +----------------------+  |
     * I1 ~~> |       Framing        | ~~> O1

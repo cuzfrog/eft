@@ -1,0 +1,38 @@
+sudo: false
+
+language: scala
+
+scala:
+  - 2.12.2
+
+jdk:
+  - oraclejdk8
+
+cache:
+  directories:
+  - "$HOME/.ivy2/cache"
+  - "$HOME/.sbt"
+
+script:
+  - sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 -J-XX:ReservedCodeCacheSize=256M -J-Xms1024M ";test;assembly"
+  - ls -lh /tmp/eft.zip
+
+before_cache:
+  - find $HOME/.ivy2/cache -name "ivydata-*.properties" -print -delete
+  - find $HOME/.sbt        -name "*.lock"               -print -delete
+
+deploy:
+  provider: releases
+  api_key:
+    secure: Tn1hun2uujIseOSWQW+m87pKRFShrombdkKOQvkpwKC+drJk90AIE2YgU5y8RALxcWkigAwazllAGYybpslBnFQ5rHQlQZUw9eEkj+EmXl25hNC2s41oLqm+ITTZaD4o9RzrjRdZVCqW41HFEVG2WNENTq1Ae9WgW/cGFlkfJCUD0y5NjJ+U9B+pgCOxaU+qeVCJBX/Q+HWeNTpl9PN7I+EfXjJhl9R9p0PAwWRMRnC6y7X/a641qmFzViYURS0GruvzDv8gK15GQj/DdqlAy/YWKb/W+GfctZgvYcfLYximOIvYMqHLV3ZigvC3AgFWfQY8bIlIFwCSLejWSkkJuojFTuCvtTznnhHJlYRFB3/mnjYPvYPfdwopB7bMS4SF8N1UAHyxmrNoyn4OSCVb4OZHyeko7sLLZjYCGO9DEzmNV17UohqwXVV9QShtszsl788uXeKUaLdSAJ/xPLBFfGhJBviGNFnuSt2S96Klb2vreNJyzNJ7bO5ngjz/BZwkfeL6LtvVTm4UK5YGmXYTY0Wapi5jND84YslHENhBHFp17B8GaDudkYS/4CQ5/rlP8Z7dCFBn9uz1WC3Wh295Mdvosa9s+XtazqOP2wVEaJuwT1UyUi/NBsYa101yQGQbVoaEN8EcoXGIm3sReGbq4hyQ2Dis2Vx8I4IRd7mqzgE=
+  file: "/tmp/eft.zip"
+  overwrite: true
+  skip_cleanup: true
+  on:
+    tags: true
+
+notifications:
+  email:
+    recipients:
+    - cuzfrog@139.com
+    on_success: always
