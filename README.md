@@ -1,7 +1,19 @@
 [![Build Status](https://travis-ci.org/cuzfrog/eft.svg?branch=master)](https://travis-ci.org/cuzfrog/eft)
-# eft - a file transfer tool.
+# eft - effective file transfer tool.
 
-Copy file between two computers, based on akka stream.
+Copy file between two computers within a single tcp connection, based on akka stream.
+
+### Motivation:
+
+I need to pass file between two PCs. Where all the common ports like 22/445/139 are not available. Plus, a unidirectional filewall resides bewteen.
+```text
+      Unidirectional
+        Firewall
+          >|>
+NodeA     >|>     NodeB
+          >|>
+```
+eft comes to solve the problem.
 
 ### Usage:
 Setup push on node where you want to send a file:
