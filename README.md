@@ -34,7 +34,7 @@ Download zip from [Releases](https://github.com/cuzfrog/eft/releases),
   |  +--------+   <~   I     <~     I      I=   <~   =O
   +----------------------------------------+          +-------
 ```
- Where `NodeA = NodeB.reversed` and `NodeA.Flow = NodeB.Flow.reversed`
+ Where `NodeA = NodeB` in topology.
 
 * Reactive.
 ```text
