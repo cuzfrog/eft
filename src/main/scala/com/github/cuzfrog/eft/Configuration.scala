@@ -7,4 +7,6 @@ private case class Configuration(isDebug: Boolean,
                                  networkTimeout: Duration,
                                  port: Option[Int] = None,
                                  name: String = "eft",
-                                 pushChunkSize: Int = 8192)
+                                 pushChunkSize: Int = 24576,
+                                 fileSinkEagerComplete: Boolean = false //see TCP_PROBLEM.MD
+                                )

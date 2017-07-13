@@ -41,7 +41,7 @@ Download zip from [Releases](https://github.com/cuzfrog/eft/releases),
   ------+      +-----------+
         |      |           O=   ~>   Test/Log  
         |      |           |  
-      a O= ~> =I BroadCast O=   ~>   FileSink
+      a O= ~> =I BroadCast O=   ~>   ControlMerge ~>  FileSink
         |      | (Router)  |         
         |      |           |        +-------- +
         |      |         b O=  ~>  =I c       |
@@ -57,7 +57,12 @@ Download zip from [Releases](https://github.com/cuzfrog/eft/releases),
 Where `~> a-b-c-d-e-f ~>` forms a reactive chain.
 Which means protocol process completes in a single loop within a single Tcp connection.
 
+`ControlMerge` see problems below.
+
 Implementation detail: [LoopTcpMan](https://github.com/cuzfrog/eft/blob/master/src/main/scala/com/github/cuzfrog/eft/LoopTcpMan.scala)
+ 
+### Tcp problems:
+Akka stream tcp [problems](TCP_PROBLEM.MD) encountered
 
 ### Build:
 under sbt console:

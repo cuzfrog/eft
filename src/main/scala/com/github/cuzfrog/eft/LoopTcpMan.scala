@@ -86,7 +86,8 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
       shutdownCallback = () => system.terminate(),
       echoOther = true,
       receiveTestMsgConsumeF = Some(msg => debug(s"Pull <~~ $msg")),
-      sendTestMsgConsumeF = Some(msg => debug(s"Pull ~~> $msg"))
+      sendTestMsgConsumeF = Some(msg => debug(s"Pull ~~> $msg")),
+      fileSinkEagerComplete = config.fileSinkEagerComplete //see TCP_PROBLEM.MD
     )
     server.runForeach { connection =>
       connection.handleWith(pullFlow.join(LoopTcpMan.FramingBidi.reversed))
@@ -106,7 +107,8 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
         println(s"From $remoteIp: " + ByteString(otherV).utf8String)
       ),
       receiveTestMsgConsumeF = Some(msg => debug(s"Pull <~~ $msg")),
-      sendTestMsgConsumeF = Some(msg => debug(s"Pull ~~> $msg"))
+      sendTestMsgConsumeF = Some(msg => debug(s"Pull ~~> $msg")),
+      fileSinkEagerComplete = config.fileSinkEagerComplete //see TCP_PROBLEM.MD
     )
     val result = tcpFlow
       .join(LoopTcpMan.FramingBidi)
@@ -144,13 +146,21 @@ private class LoopTcpMan(config: Configuration) extends TcpMan with SimpleLogger
 private object LoopTcpMan {
 
   /**
+    *
     * Construct a symmetric flow.
     *
+    * @param nodeType               denote this is a Pull or Push node.
     * @param getPath                function to get destination path.
     * @param saveFilenameF          function to store filename.
-    * @param otherConsumeF          function to consume Other msg.
+    * @param shutdownCallback       hook actor system (and more) to terminate.
+    * @param otherConsumeF          function to cunsume other msg.
+    * @param chunkSize              chunkSize for FileIO.fromPath.
     * @param echoOther              whether to echo Other msg.
     * @param receiveTestMsgConsumeF function to consume a fork of msg(for testing).
+    * @param sendTestMsgConsumeF    function to consume a fork of msg(for testing)
+    * @param fileSinkEagerComplete  is fileSink-merge eager to complete.
+    *                               When run eft remotely or locally, akka stream behaves
+    *                               differently that a complete signal is emit or not, respectively.
     * @param executionContext       implicit ExecutionContext
     * @return a flow containing pull logic, materializing Future of IOResult.
     */
@@ -162,7 +172,8 @@ private object LoopTcpMan {
                              chunkSize: Int = 8192,
                              echoOther: Boolean = false,
                              receiveTestMsgConsumeF: Option[Msg => Unit] = None,
-                             sendTestMsgConsumeF: Option[Msg => Unit] = None)
+                             sendTestMsgConsumeF: Option[Msg => Unit] = None,
+                             fileSinkEagerComplete: Boolean = false)
                             (implicit executionContext: ExecutionContext)
   : Flow[ByteString, ByteString, Future[Future[IOResult]]] = {
 
@@ -231,7 +242,7 @@ private object LoopTcpMan {
           )
         )
         /** File merge for signaling complete. */
-        val FM = builder.add(MergePreferred[Msg](1, eagerComplete = true))
+        val FM = builder.add(MergePreferred[Msg](1, eagerComplete = fileSinkEagerComplete))
         /** File complete signal */
         val CompleteSignal = Source.fromFuture(fileDonePromise.future)
 
@@ -270,14 +281,14 @@ private object LoopTcpMan {
   private def MsgTranslationBidi
   (inTestSink: Sink[Msg, Future[Done]] = Sink.ignore,
    outTestSink: Sink[Msg, Future[Done]] = Sink.ignore) =
-    BidiFlow.fromGraph(GraphDSL.create() { b =>
-      val bs2msg = Flow[ByteString].map(Msg.fromByteString)
-      val msg2bs = Flow[Msg].map(_.toByteString)
+  BidiFlow.fromGraph(GraphDSL.create() { b =>
+    val bs2msg = Flow[ByteString].map(Msg.fromByteString)
+    val msg2bs = Flow[Msg].map(_.toByteString)
 
-      val top = b.add(bs2msg.alsoTo(inTestSink))
-      val bottom = b.add(Flow[Msg].alsoTo(outTestSink).via(msg2bs))
-      BidiShape.fromFlows(top, bottom)
-    })
+    val top = b.add(bs2msg.alsoTo(inTestSink))
+    val bottom = b.add(Flow[Msg].alsoTo(outTestSink).via(msg2bs))
+    BidiShape.fromFlows(top, bottom)
+  })
 
   //@formatter:off
   /**

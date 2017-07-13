@@ -75,7 +75,8 @@ class LoopTcpManTest {
     saveFilenameF = (fn: String) => {
       filenameRef.set(fn)
       println(s"store filename [$fn] to ref")
-    }
+    },
+    fileSinkEagerComplete = true
   )
   private def newPubSub[M](flow: Flow[ByteString, ByteString, M]) =
     TestSource.probe[ByteString].via(flow).toMat(TestSink.probe)(Keep.both).run
