@@ -5,7 +5,7 @@ Copy file between two computers within a single tcp connection, based on akka st
 
 ### Motivation:
 
-I need to pass file between two PCs. Where all the common ports like 22/445/139 are not available. Plus, a unidirectional filewall resides bewteen.
+I need to pass file between two PCs. Where all the common ports like 22/445/139 are not available. Plus, a unidirectional filewall resides between.
 ```text
       Unidirectional
         Firewall
