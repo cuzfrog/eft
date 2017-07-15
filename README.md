@@ -50,11 +50,12 @@ Download zip from [Releases](https://github.com/cuzfrog/eft/releases),
 
 * Reactive.
 ```text
+                       (Filters as Router)
   ------+      +-----------+
         |      |           O=   ~>   Test/Log  
         |      |           |  
       a O= ~> =I BroadCast O=   ~>   ControlMerge ~>  FileSink
-        |      | (Router)  |         
+        |      |           |         
         |      |           |        +-------- +
         |      |         b O=  ~>  =I c       |
   TL    |      +-----------+        |   Msg   |     
@@ -73,10 +74,12 @@ Which means protocol process completes in a single loop within a single Tcp conn
 
 Implementation detail: [LoopTcpMan](https://github.com/cuzfrog/eft/blob/master/src/main/scala/com/github/cuzfrog/eft/LoopTcpMan.scala)
  
-### Tcp problems:
+### Problems:
 Akka stream tcp [problems](TCP_PROBLEM.MD) encountered.
 
 For now, sometimes, eft cannot complete for reason/problem 2. use `--debug` option to see if the transfer is done, and `ctrl + C` to close eft, the file transfer will have been done.
+
+Max `chunkSize` is `Short.maximum`, because `Framing layer` use 16 bit length field.
 
 ### Build:
 under sbt console:
