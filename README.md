@@ -1,7 +1,7 @@
 [![Build Status](https://travis-ci.org/cuzfrog/eft.svg?branch=master)](https://travis-ci.org/cuzfrog/eft)
 # eft - effective file transfer tool.
 
-Copy file between two computers within a single tcp connection, based on akka stream.
+Copy file between two computers within a single tcp connection, based on akka stream. This is also an example of akka stream.
 
 ### Motivation:
 
@@ -74,7 +74,9 @@ Which means protocol process completes in a single loop within a single Tcp conn
 Implementation detail: [LoopTcpMan](https://github.com/cuzfrog/eft/blob/master/src/main/scala/com/github/cuzfrog/eft/LoopTcpMan.scala)
  
 ### Tcp problems:
-Akka stream tcp [problems](TCP_PROBLEM.MD) encountered
+Akka stream tcp [problems](TCP_PROBLEM.MD) encountered.
+
+For now, sometimes, eft cannot complete for reason/problem 2. use `--debug` option to see if the transfer is done, and `ctrl + C` to close eft, the file transfer will have been done.
 
 ### Build:
 under sbt console:
