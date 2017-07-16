@@ -23,7 +23,7 @@ Setup push on node where you want to send a file:
         
 Then, on node where you want to receive this file:
 
-    $eft pull XXXXXX
+    $eft pull --push-node=XXXXXX
     
 file1.txt will be saved to current dir on pull node.
 
