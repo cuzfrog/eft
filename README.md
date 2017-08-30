@@ -23,7 +23,7 @@ Setup push on node where you want to send a file:
         
 Then, on node where you want to receive this file:
 
-    $eft pull --push-node=XXXXXX
+    $eft pull -n XXXXXX
     
 file1.txt will be saved to current dir on pull node.
 
@@ -77,7 +77,8 @@ Implementation detail: [LoopTcpMan](https://github.com/cuzfrog/eft/blob/master/s
 ### Problems:
 Akka stream tcp [problems](TCP_PROBLEM.MD) encountered.
 
-For now, sometimes, eft cannot complete for reason/problem 2. use `--debug` option to see if the transfer is done, and `ctrl + C` to close eft, the file transfer will have been done.
+For now, sometimes, eft cannot complete for reason/problem 2.
+use `--debug` option to see if the transfer is done, and `ctrl + C` to close eft, the file transfer will have been done.
 
 Max `chunkSize` is `Short.maximum`, because `Framing layer` use 16 bit length field.
 

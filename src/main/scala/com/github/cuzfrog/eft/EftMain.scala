@@ -8,51 +8,52 @@ import scala.concurrent.Await
 import scala.concurrent.duration._
 import scala.language.postfixOps
 
-
 /**
   * Created by cuz on 7/3/17.
   */
-private class EftMain(cmd: CommonOpt, config: Configuration) extends SimpleLogger {
+private class EftMain(argDef: EftDef, config: Configuration) extends SimpleLogger {
   override val loggerAgent: String = "eft"
-  override val loggerLevel = if (config.isDebug) SimpleLogger.Debug else SimpleLogger.Info
+  override val loggerLevel: SimpleLogger.Level =
+    if (config.isDebug) SimpleLogger.Debug else SimpleLogger.Info
 
   private lazy val tcpMan: TcpMan = TcpMan(config = config)
 
+  import Scmd.scmdValueConverter._
 
   def run(): Unit = try {
-    cmd match {
-      case push: Push =>
-        val file = push.file.toPath
-        if (Files.exists(file)) {
-          push.pullNode match {
-            case Some(addrOrCode) =>
-              val cInfo = RemoteInfo.fromAddressOrCode(addrOrCode)
-              tcpMan.autoClosed.foreach { tm =>
-                val result = Await.result(tm.push(cInfo, file), Duration.Inf)
-                println(result.getOrElse("Done."))
-              }
-            case None => tcpMan.autoClosed.foreach { tcpman =>
-              val cInfo = tcpman.setPush(file)
-              printConnectionInfo(cmd, cInfo)
-              await(() => !tcpman.isClosed)
-            }
-          }
-        }
-        else err(s"File $file does not exist.")
-      case pull: Pull =>
-        val destDir = pull.destDir.toPath
-        pull.pushNode match {
+    if (argDef.push.met) {
+      val file = argDef.file.value.toPath
+      if (Files.exists(file)) {
+        argDef.remoteNode.value match {
           case Some(addrOrCode) =>
+            val cInfo = RemoteInfo.fromAddressOrCode(addrOrCode)
             tcpMan.autoClosed.foreach { tm =>
-              val result = Await.result(tm.pull(RemoteInfo.fromAddressOrCode(addrOrCode), destDir), Duration.Inf)
+              val result = Await.result(tm.push(cInfo, file), Duration.Inf)
               println(result.getOrElse("Done."))
             }
           case None => tcpMan.autoClosed.foreach { tcpman =>
-            val cInfo = tcpman.setPull(destDir)
-            printConnectionInfo(cmd, cInfo)
+            val cInfo = tcpman.setPush(file)
+            printConnectionInfo(argDef, cInfo)
             await(() => !tcpman.isClosed)
           }
         }
+      }
+      else err(s"File $file does not exist.")
+    }
+    else if (argDef.pull.met) {
+      val destDir = argDef.destDir.value.toPath
+      argDef.remoteNode.value match {
+        case Some(addrOrCode) =>
+          tcpMan.autoClosed.foreach { tm =>
+            val result = Await.result(tm.pull(RemoteInfo.fromAddressOrCode(addrOrCode), destDir), Duration.Inf)
+            println(result.getOrElse("Done."))
+          }
+        case None => tcpMan.autoClosed.foreach { tcpman =>
+          val cInfo = tcpman.setPull(destDir)
+          printConnectionInfo(argDef, cInfo)
+          await(() => !tcpman.isClosed)
+        }
+      }
     }
   } catch {
     case e: Throwable =>
@@ -65,9 +66,9 @@ private class EftMain(cmd: CommonOpt, config: Configuration) extends SimpleLogge
     println("Complete.")
   }
 
-  private def printConnectionInfo(cmd: CommonOpt, cInfo: RemoteInfo): Unit = {
+  private def printConnectionInfo(argDef: EftDef, cInfo: RemoteInfo): Unit = {
     val code =
-      if (cmd.printCode) RemoteInfo.publishCode(cInfo) else RemoteInfo.publishAddress(cInfo)
+      if (argDef.printCode.value) RemoteInfo.publishCode(cInfo) else RemoteInfo.publishAddress(cInfo)
     info(s"Connection info: $code listening...", withTitle = false)
   }
 }

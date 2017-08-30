@@ -11,7 +11,6 @@ object Settings {
       "spray repo" at "http://repo.spray.io"
     ),
     organization := "com.github.cuzfrog",
-    scalaVersion := "2.12.2",
     scalacOptions ++= Seq(
       "-unchecked",
       "-deprecation",

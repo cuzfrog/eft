@@ -2,6 +2,7 @@ import MyTasks._
 import sbt._
 import sbt.Keys._
 import sbtassembly.AssemblyKeys.assembly
+import scala.sys.process.Process
 
 object EftSettings {
   val settings = Seq(
