@@ -3,7 +3,7 @@ import Settings._
 
 shellPrompt in ThisBuild := { state => Project.extract(state).currentRef.project + "> " }
 version in ThisBuild := "0.3.0"
-scalaVersion := "2.12.3"
+scalaVersion in ThisBuild := "2.12.3"
 
 val macroAnnotationSettings = Seq(
   addCompilerPlugin("org.scalameta" % "paradise" % "3.0.0-M10" cross CrossVersion.full),

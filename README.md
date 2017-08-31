@@ -1,7 +1,16 @@
 [![Build Status](https://travis-ci.org/cuzfrog/eft.svg?branch=master)](https://travis-ci.org/cuzfrog/eft)
+[![release](http://github-release-version.herokuapp.com/github/cuzfrog/eft/release.svg?style=flat)](https://github.com/cuzfrog/eft/releases/latest)
 # eft - effective file transfer tool.
 
 Copy file between two computers within a single tcp connection, based on akka stream. This is also an example of akka stream.
+
+### Problems:
+Akka stream tcp [problems](TCP_PROBLEM.MD) encountered.
+
+For now, sometimes, eft cannot complete for reason/problem 2.
+use `--debug` option to see if the transfer is done, and `ctrl + C` to close eft, the file transfer will have been done.
+
+Max `chunkSize` is `Short.maximum`, because `Framing layer` use 16 bit length field.
 
 ### Motivation:
 
@@ -73,14 +82,6 @@ Which means protocol process completes in a single loop within a single Tcp conn
 `ControlMerge` see problems below.
 
 Implementation detail: [LoopTcpMan](https://github.com/cuzfrog/eft/blob/master/src/main/scala/com/github/cuzfrog/eft/LoopTcpMan.scala)
- 
-### Problems:
-Akka stream tcp [problems](TCP_PROBLEM.MD) encountered.
-
-For now, sometimes, eft cannot complete for reason/problem 2.
-use `--debug` option to see if the transfer is done, and `ctrl + C` to close eft, the file transfer will have been done.
-
-Max `chunkSize` is `Short.maximum`, because `Framing layer` use 16 bit length field.
 
 ### Build:
 under sbt console:

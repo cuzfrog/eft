@@ -2,9 +2,6 @@ sudo: false
 
 language: scala
 
-scala:
-  - 2.12.2
-
 jdk:
   - oraclejdk8
 
@@ -14,7 +11,7 @@ cache:
   - "$HOME/.sbt"
 
 script:
-  - sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 -J-XX:ReservedCodeCacheSize=256M -J-Xms1024M ";test;assembly"
+  - sbt -Dfile.encoding=UTF8 -J-XX:ReservedCodeCacheSize=256M -J-Xms1024M ";test;assembly"
   - ls -lh /tmp/eft.zip
 
 before_cache:
